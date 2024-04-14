@@ -348,8 +348,8 @@ with open('nhl_testing.html', 'w') as table:
 # %% Sending emails with attachment.
 
 # Email and SMTP configuration
-sender_email = 'anthonybokar@gmail.com'
-receiver_emails = ['anthonybokar@gmai.com']
+sender_email = 'your_email@gmail.com'
+receiver_emails = ['your_email@gmail.com']
 password = 'pw'
 smtp_server = 'smtp.gmail.com'
 smtp_port = 587
