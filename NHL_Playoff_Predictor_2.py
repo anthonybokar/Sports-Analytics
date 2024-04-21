@@ -16,6 +16,7 @@ from email.mime.text import MIMEText
 from email import encoders
 from pretty_html_table import build_table
 import datetime as dt
+from datetime import timedelta
 
 #from bs4 import exceptions as bs_exceptions
 #import time
@@ -33,7 +34,7 @@ team_abbrevs_dict = {'Carolina Hurricanes':'hurricanes', 'Boston Bruins':'bruins
                      'Ottawa Senators':'senators', 'Mighty Ducks of Anaheim':'ducks', 'Phoenix Coyotes':'coyotes', 'Atlanta Thrashers':'jets'
                     }
 
-team_abbrev = team_abbrevs_dict['Carolina Hurricanes']
+# team_abbrev = team_abbrevs_dict['Carolina Hurricanes']
 
 # Set to True if retraining model
 train_model = False
@@ -41,9 +42,17 @@ train_model = False
 # Set to True if wanting to visualize stats using dist_visualizer function
 viz_stats = False
 
-# Create a sequence of years, default starting year is 2013.
-start_year = 2000
-this_season = 2024
+# Logic for getting the years we want - last 20 seasons
+
+today = dt.datetime.now()
+todays_year = today.year
+if today >= dt.datetime(todays_year, 11, 1):
+    this_season = todays_year + 1
+else:
+    this_season = todays_year
+# Create a sequence of years, default starting year is 2000.
+
+start_year = todays_year - 20
 increment = 1
 years_sequence = range(start_year, this_season + 1, increment)
 
@@ -282,6 +291,7 @@ excel_drop_cols = ['Rank', 'Nickname', 'Year', 'T']
 # Creating Excel export file for email attachment
 this_season_excel_df = nhl_data_this_season.drop(columns = excel_drop_cols).sort_values(by = 'PTS%', ascending = False)
 # this_season_excel_df.to_excel("this_season_excel.xlsx", index = False)
+nhl_data_all_years.to_excel(f"nhl_team_data_{str(start_year)}_{str(this_season)}.xlsx", index = False)
 
 # %% Creating Excel file for attachment and Tableau data source
 from openpyxl.utils.dataframe import dataframe_to_rows
