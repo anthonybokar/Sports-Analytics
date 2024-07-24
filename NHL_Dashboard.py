@@ -4,6 +4,7 @@
 #%% Setting up the notebook
 import pandas as pd
 import numpy as np
+import plotly.express as px
 import matplotlib.pyplot as plt
 import requests
 from bs4 import BeautifulSoup #BeautifulSoup is a class in bs4
@@ -60,7 +61,7 @@ years_sequence = range(start_year, this_season + 1, increment)
 years_to_list = list(years_sequence)
 years = [str(y) for y in years_to_list]
 
-# No data for 2005 in Hockey Reference
+# No data for 2005 in Hockey Reference - due to NHL lockout in 2004
 years.remove('2005') 
 
 #%% Initializing a list to collect data frames
