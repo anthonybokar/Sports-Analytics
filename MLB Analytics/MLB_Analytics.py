@@ -43,12 +43,10 @@ train_model = False
 # Set to True if wanting to visualize stats using dist_visualizer function
 viz_stats = False
 
-# Logic for getting the years we want - last 20 seasons
-
+# Getting the year of this season
 this_season = dt.datetime.now().year
 
-# Create a sequence of years, default starting year is 2000.
-
+# Logic for getting the years we want - last 20 seasons
 start_year = this_season - 20
 increment = 1
 years_sequence = range(start_year, this_season + 1, increment)
@@ -142,8 +140,8 @@ for year in years:
 #%% Scraping data using html_scraper
 
 # Initializing a list to collect data frames at league level
-df_list_bat = []
-df_list_pitch = []
+leauge_bat_df_list = []
+league_pitch_df_list = []
 team_bat_df_list = []
 team_pitch_df_list = []
 
@@ -165,4 +163,7 @@ index_team_pitch = 0
 index_all_teams_bat = 0
 index_all_teams_pitch = 4
 
+html_scraper(team_bat_url, team_bat_tag, index_team_bat, team_bat_df_list)
+html_scraper(team_pitch_url, team_pitch_tag, index_team_pitch, team_pitch_df_list)
+html_scraper(league_url, '#all_team_batting', 3, team_bat_df_list)
 html_scraper(team_bat_url, '#all_team_batting', 3, team_bat_df_list)
