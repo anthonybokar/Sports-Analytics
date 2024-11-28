@@ -31,7 +31,7 @@ team_abbrevs_dict = {'Carolina Hurricanes':'hurricanes', 'Boston Bruins':'bruins
                      'Chicago Blackhawks':'blackhawks', 'Colorado Avalanche':'avalanche', 'Dallas Stars':'stars', 'Minnesota Wild':'wild', 'Nashville Predators':'predators',
                      'St. Louis Blues':'blues', 'Winnipeg Jets':'jets', 'Anaheim Ducks':'ducks', 'Calgary Flames':'flames', 'Edmonton Oilers':'oilers',
                      'Los Angeles Kings':'kings', 'San Jose Sharks':'sharks', 'Seattle Kraken':'kraken', 'Vegas Golden Knights':'goldenknights', 'Vancouver Canucks':'canucks',
-                     'Ottawa Senators':'senators', 'Mighty Ducks of Anaheim':'ducks', 'Phoenix Coyotes':'coyotes', 'Atlanta Thrashers':'jets'
+                     'Ottawa Senators':'senators', 'Mighty Ducks of Anaheim':'ducks', 'Phoenix Coyotes':'coyotes', 'Atlanta Thrashers':'jets', 'Utah Hockey Club':'utah'
                     }
 
 # team_abbrev = team_abbrevs_dict['Carolina Hurricanes']
@@ -320,7 +320,7 @@ def update_sheet(df, file, sheet):
     workbook.save(file)
 
 # %% Writing the Excel 
-update_sheet(this_season_excel_df, 'this_season_excel.xlsx', 'Current Season Data')
+update_sheet(this_season_excel_df, '/Users/anthony/Desktop/VSFolder/Sports Analytics/NHL Analytics/this_season_excel.xlsx', 'Current Season Data')
 
 # Hyperlinking Team column in html table to f"nhl.com/{team_abbrev}/"
 nhl_data_this_season.loc[:,"Team"] = nhl_data_this_season.apply(lambda row: f"<a href='https://www.nhl.com/{row.Nickname}/'>{row.Team}</a>", axis = 1)
@@ -339,8 +339,7 @@ html_text = f"""
 <p style="font-size: medium; font-family: sans-serif;">
 Hi hockey fans!<br> 
 The model is back in action with some improvements. These predictions are based on data from <a href = "https://www.hockey-reference.com/">Hockey Reference</a> (data as of {today}).
-You can find all the statistics for this season in the attached Excel file and please check out the <a href = "https://public.tableau.com/app/profile/anthony.bokar/viz/NHLPlayoffDataAnalysis/StatisticsComparisonandTrendAnalysis">NHL Analytics Dashboard</a> for a comparison of statistics over the past 20+ seasons!
-For you baseball lovers, MLB analytics will be coming your way shortly!
+You can find all the statistics for this season in the attached Excel file.
 </p>
 <p style="font-size: x-small; font-family: sans-serif;">
   <b>Key for uncommon statistic abbreviations:</b><br>
@@ -357,10 +356,9 @@ with open('nhl_testing.html', 'w') as table:
 
 # %% Sending emails with attachment.
 
+from NHL_vars import my_email as sender_email, my_email_pw as password, receiver_list as receiver_emails
+
 # Email and SMTP configuration
-sender_email = 'your_email@gmail.com'
-receiver_emails = ['your_email@gmail.com']
-password = 'pw'
 smtp_server = 'smtp.gmail.com'
 smtp_port = 587
 
@@ -375,7 +373,7 @@ msg['Subject'] = f"NHL Playoff Predictions - Week of {dt.datetime.now().strftime
 msg.attach(MIMEText(email_html, 'html'))
 
 # Attach the Excel file
-file_path = 'this_season_excel.xlsx'
+file_path = '/Users/anthony/Desktop/VSFolder/Sports Analytics/NHL Analytics/this_season_excel.xlsx'
 with open(file_path, 'rb') as attachment:
     part = MIMEBase('application', 'octet-stream')
     part.set_payload(attachment.read())
@@ -394,6 +392,5 @@ except Exception as e:
     print(f"Failed to send email. Error: {str(e)}")
 finally:
     server.quit()
-
 
 # %%
