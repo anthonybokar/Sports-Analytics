@@ -356,7 +356,7 @@ with open('nhl_testing.html', 'w') as table:
 
 # %% Sending emails with attachment.
 
-from NHL_vars import my_email as sender_email, my_email_pw as password, receiver_list as receiver_emails
+from NHL_vars import my_email as sender_email, my_email_pw as password, receiver_list as receiver_emails, file_path as file_path
 
 # Email and SMTP configuration
 smtp_server = 'smtp.gmail.com'
@@ -373,7 +373,6 @@ msg['Subject'] = f"NHL Playoff Predictions - Week of {dt.datetime.now().strftime
 msg.attach(MIMEText(email_html, 'html'))
 
 # Attach the Excel file
-file_path = '/Users/anthony/Desktop/VSFolder/Sports Analytics/NHL Analytics/this_season_excel.xlsx'
 with open(file_path, 'rb') as attachment:
     part = MIMEBase('application', 'octet-stream')
     part.set_payload(attachment.read())
