@@ -1,0 +1,446 @@
+
+<b><u><h2 style="font-family: sans-serif; text-align: center; color: maroon;">NHL Playoff Predictions</h2></u></b>
+<p style="font-size: medium; font-family: sans-serif;">
+Hi hockey fans!<br> 
+The model is back in action with some improvements. These predictions are based on data from <a href = "https://www.hockey-reference.com/">Hockey Reference</a> (data as of Saturday, 11/30/2024 10:46 AM).
+You can find all the statistics for this season in the attached Excel file.
+</p>
+<p style="font-size: x-small; font-family: sans-serif;">
+  <b>Key for uncommon statistic abbreviations:</b><br>
+  SOW: Shootout wins, SOL: Shootout losses, SRS: Simple rating system based on avg. goal differential and strength of schedule (SOS) PTS%: Points percentage (i.e., points divided by maximum points, similar to winning percentage in other sports) PP%: Power play percentage, PK%: Penalty kill percentage, PIM/G: Penalties in minutes per game oPIM/G: Opponent PIM/G, SH: Short-handed goals, SHA: SH against (See Hockey Reference for more detailed descriptions.)
+</p>
+<p><table class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th style = "background-color: #FFFFFF;font-family: sans-serif;font-size: medium;color: #305496;text-align: center;border-bottom: 2px solid #305496;padding: 0px;width: 1000px">Team</th>
+      <th style = "background-color: #FFFFFF;font-family: sans-serif;font-size: medium;color: #305496;text-align: center;border-bottom: 2px solid #305496;padding: 0px;width: 1000px">GP</th>
+      <th style = "background-color: #FFFFFF;font-family: sans-serif;font-size: medium;color: #305496;text-align: center;border-bottom: 2px solid #305496;padding: 0px;width: 1000px">W</th>
+      <th style = "background-color: #FFFFFF;font-family: sans-serif;font-size: medium;color: #305496;text-align: center;border-bottom: 2px solid #305496;padding: 0px;width: 1000px">L</th>
+      <th style = "background-color: #FFFFFF;font-family: sans-serif;font-size: medium;color: #305496;text-align: center;border-bottom: 2px solid #305496;padding: 0px;width: 1000px">OL</th>
+      <th style = "background-color: #FFFFFF;font-family: sans-serif;font-size: medium;color: #305496;text-align: center;border-bottom: 2px solid #305496;padding: 0px;width: 1000px">PTS</th>
+      <th style = "background-color: #FFFFFF;font-family: sans-serif;font-size: medium;color: #305496;text-align: center;border-bottom: 2px solid #305496;padding: 0px;width: 1000px">PTS%</th>
+      <th style = "background-color: #FFFFFF;font-family: sans-serif;font-size: medium;color: #305496;text-align: center;border-bottom: 2px solid #305496;padding: 0px;width: 1000px">GF/G</th>
+      <th style = "background-color: #FFFFFF;font-family: sans-serif;font-size: medium;color: #305496;text-align: center;border-bottom: 2px solid #305496;padding: 0px;width: 1000px">GA/G</th>
+      <th style = "background-color: #FFFFFF;font-family: sans-serif;font-size: medium;color: #305496;text-align: center;border-bottom: 2px solid #305496;padding: 0px;width: 1000px">GDiff/G</th>
+      <th style = "background-color: #FFFFFF;font-family: sans-serif;font-size: medium;color: #305496;text-align: center;border-bottom: 2px solid #305496;padding: 0px;width: 1000px">POff%</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Winnipeg Jets</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">18</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">6</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">36</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.75</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.88</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.5</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">1.38</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">100.0</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Minnesota Wild</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">23</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">15</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">4</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">4</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">34</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.739</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.22</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.35</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.87</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">99.99</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Washington Capitals</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">23</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">16</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">6</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">1</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">33</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.717</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">4.13</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.78</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">1.35</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">99.99</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Carolina Hurricanes</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">23</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">16</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">6</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">1</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">33</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.717</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.96</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.74</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">1.22</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">99.99</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Vegas Golden Knights</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">15</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">6</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">33</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.688</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.75</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.0</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.75</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">99.83</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">New Jersey Devils</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">26</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">16</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">8</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">34</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.654</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.42</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.65</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.77</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">99.96</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Toronto Maple Leafs</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">13</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">7</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">28</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.636</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.95</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.59</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.36</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">99.66</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Dallas Stars</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">14</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">8</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">28</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.636</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.45</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.68</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.77</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">99.91</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Vancouver Canucks</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">12</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">7</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">27</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.614</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.23</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.14</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.09</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">96.41</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Florida Panthers</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">14</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">9</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">1</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">29</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.604</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.54</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.33</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.21</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">83.88</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Los Angeles Kings</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">13</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">8</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">29</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.604</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.96</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.71</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.25</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">98.99</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Tampa Bay Lightning</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">12</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">8</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">26</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.591</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.77</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.05</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.72</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">98.69</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Calgary Flames</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">12</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">8</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">4</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">28</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.583</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.54</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.79</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.25</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">89.97</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">New York Rangers</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">12</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">9</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">1</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">25</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.568</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.23</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.82</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.41</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">98.82</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Edmonton Oilers</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">23</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">12</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">9</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">26</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.565</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.96</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.13</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.17</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">66.77</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Colorado Avalanche</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">13</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">11</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">26</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.542</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.29</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.71</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.42</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">4.4</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Columbus Blue Jackets</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">10</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">9</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">23</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.523</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.5</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.55</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.05</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">35.67</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Buffalo Sabres</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">23</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">11</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">10</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.522</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.09</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.04</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.05</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">78.04</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Philadelphia Flyers</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">11</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">10</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">25</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.521</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.79</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.29</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.5</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">8.76</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Boston Bruins</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">25</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">11</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">11</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">25</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.5</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.32</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.08</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.76</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">9.95</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Seattle Kraken</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">11</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">12</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">1</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">23</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.479</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.83</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.0</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.17</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">44.45</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">St. Louis Blues</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">11</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">12</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">1</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">23</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.479</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.5</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.17</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.67</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">4.14</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Detroit Red Wings</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">23</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">10</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">11</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.478</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.57</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.09</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.52</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">32.55</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Utah Hockey Club</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">23</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">9</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">10</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">4</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.478</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.74</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.17</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.43</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">16.8</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Ottawa Senators</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">10</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">11</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">1</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">21</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.477</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.18</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.23</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.05</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">58.65</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Anaheim Ducks</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">9</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">10</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">21</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.477</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.55</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.91</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.36</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">34.73</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">New York Islanders</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">8</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">10</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">6</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.458</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.54</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.08</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.54</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">6.25</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Pittsburgh Penguins</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">25</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">9</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">12</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">4</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.44</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.6</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.84</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-1.24</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.02</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Montreal Canadiens</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">22</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">8</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">11</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">19</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.432</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.82</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.73</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.91</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.4</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">San Jose Sharks</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">26</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">8</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">13</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">5</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">21</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.404</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.85</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.46</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.61</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.68</td>
+    </tr>
+    <tr>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Nashville Predators</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">24</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">7</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">12</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">5</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">19</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.396</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.33</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">3.17</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.84</td>
+      <td style = "background-color: #D9E1F2;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.65</td>
+    </tr>
+    <tr>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">Chicago Blackhawks</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">23</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">8</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">13</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">18</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">0.391</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.48</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">2.96</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">-0.48</td>
+      <td style = "background-color: white; color: black;font-family: sans-serif;font-size: medium;text-align: center;padding: 0px;width: 1000px">5.49</td>
+    </tr>
+  </tbody>
+</table></p>

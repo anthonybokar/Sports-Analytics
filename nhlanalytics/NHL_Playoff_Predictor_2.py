@@ -18,9 +18,9 @@ from pretty_html_table import build_table
 import datetime as dt
 from datetime import timedelta
 
-#from bs4 import exceptions as bs_exceptions
-#import time
-#import html5lib
+# Stored variables for import
+from NHL_vars import my_email as sender_email, my_email_pw as password, receiver_list as receiver_emails, this_season_excel_file_path as attachment_file_path, last_20_seasons_excel_file_path, model_path, nhl_html_table
+
 #%% Defining variables used throughout the code
 
 # Getting team abbreviations from NHL.com for hyperlinks
@@ -72,34 +72,38 @@ for year in years:
     if year != '2005':
         url = f"https://www.hockey-reference.com/leagues/NHL_{year}.html#all_stats"
 
-        # Importing HTML data from Hockey Reference using requests
-        response_test = requests.get(url)
+        try:
+            # Importing HTML data from Hockey Reference using requests
+            response_test = requests.get(url)
 
-        if response_test.status_code == 200:
+            # response_test.status_code == 200:
             nhl_html_contents = response_test.text
+
+            # Now use BeautifulSoup to create the soup and begin cleaning the file
+            # BeautifulSoup takes "markup" as argument (the contents) 
+            # and another "parser" argument to specify the language of contents
+
+            # soup is an object with certain attributes that can access various tags in the HTML code
+            # The soup object contents are equivalent to the 
+
+            soup = BeautifulSoup(nhl_html_contents, "html.parser")
+
+            #soup = soup.prettify()
+            #print(soup)
+
+            ashtml = soup.select("#all_stats")
+            ashtml_var = ashtml[0]
+            tbl = ashtml_var.contents
+            tbl_string = str(tbl[4])
+
+            dfs = pd.read_html(tbl_string)
+            df_list.append(dfs[0])
             print(f"Successfully retrieved HTML from url for the year {year}. Status code: {response_test.status_code}.")
-        else:
+        
+        except:
+            years.remove(year) # Removes year for unsuccessful imports
             print(f"Failed to retrieve HTML from url for the year {year}. Status code: {response_test.status_code}.")
 
-        # Now use BeautifulSoup to create the soup and begin cleaning the file
-        # BeautifulSoup takes "markup" as argument (the contents) 
-        # and another "parser" argument to specify the language of contents
-
-        # soup is an object with certain attributes that can access various tags in the HTML code
-        # The soup object contents are equivalent to the 
-
-        soup = BeautifulSoup(nhl_html_contents, "html.parser")
-
-        #soup = soup.prettify()
-        #print(soup)
-
-        ashtml = soup.select("#all_stats")
-        ashtml_var = ashtml[0]
-        tbl = ashtml_var.contents
-        tbl_string = str(tbl[4])
-
-        dfs = pd.read_html(tbl_string)
-        df_list.append(dfs[0])
     else:
         print(f"Skipped the year {year}. The page has no data.")
        
@@ -217,8 +221,15 @@ for y in years:
 #%% Counting the number of times each team has made the playoffs in a certain number of years prior to that season
 years_window = 3
 nhl_model_data_final = pd.DataFrame()
+nhl_model_nicknames = nhl_model_data["Nickname"].unique()
 
-for nickname in nhl_model_data["Nickname"].unique():
+# Arizona Coyotes moved to Utah in 2024
+nhl_model_nicknames = np.delete(nhl_model_nicknames, np.where(nhl_model_nicknames == 'coyotes')[0][0])
+
+for nickname in nhl_model_nicknames:
+    if nickname == 'utah':
+        df = nhl_model_data[(nhl_model_data["Nickname"] == 'utah') | (nhl_model_data["Nickname"] == 'coyotes')]
+    
     df = nhl_model_data[nhl_model_data["Nickname"] == nickname]
     df.loc[:,f"POff_Last_{str(years_window)}Yr_Count"] = df.loc[:,"POff"].shift(1).rolling(window = years_window).sum()
     nhl_model_data_final = pd.concat([nhl_model_data_final,df], ignore_index = True)
@@ -228,6 +239,8 @@ nhl_model_data_final = nhl_model_data_final.sort_values(by = ["Year", "Rank"])
 nhl_model_data_final[f"POff_Last_{str(years_window)}Yr_Count"].fillna(0, inplace = True)
 
 # %% Model construction 
+# Columns not used in model construction and predictions
+drop_columns = ['Rank', 'Team', 'T', 'OL', 'Nickname', 'Year', 'SOW', 'SOL', 'POff']
 
 # Getting training/testing data - all previous seasons except first three and this season
 exclude_years = list(range(start_year, start_year + years_window))
@@ -238,35 +251,40 @@ model_training_testing_data = nhl_model_data_final[~nhl_model_data_final["Year"]
 # Data for predicting in this season
 model_prediction_data = nhl_model_data_final[nhl_model_data_final["Year"] == str(this_season)]
 
-#%% Splitting into design matrix and target variable
-drop_columns = ['Rank', 'Team', 'T', 'OL', 'Nickname', 'Year', 'SOW', 'SOL', 'POff']
-y = model_training_testing_data["POff"]
-X = model_training_testing_data.drop(drop_columns, axis = 1)
+def build_model(train_model):
 
-if train_model == True:
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import accuracy_score, confusion_matrix
+    # Splitting into design matrix and target variable
+    if train_model == True:
+        y = model_training_testing_data["POff"]
+        X = model_training_testing_data.drop(drop_columns, axis = 1)
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2)
-    # Using a logistic model
-    model = LogisticRegression()
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.model_selection import train_test_split
+        from sklearn.metrics import accuracy_score, confusion_matrix
 
-    # Training the model
-    fitted_model = model.fit(X_train, y_train)
-    y_predictions = fitted_model.predict(X_test)
-    y_probabilities = fitted_model.predict_proba(X_test)
-    acc_score = accuracy_score(y_test, y_predictions)
-    print(f"The accuracy score is: {acc_score}.")
-    conf_matrix = confusion_matrix(y_test, y_predictions)
-    print(conf_matrix)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2)
+        # Using a logistic model
+        model = LogisticRegression()
 
-    # Saving and exporting the model
-    file = 'NHL_Playoff_Logistic_Model.pk1'
-    pickle.dump(model, open(file, 'wb'))
+        # Training the model
+        fitted_model = model.fit(X_train, y_train)
+        y_predictions = fitted_model.predict(X_test)
+        y_probabilities = fitted_model.predict_proba(X_test)
+        acc_score = accuracy_score(y_test, y_predictions)
+        print(f"The accuracy score is: {acc_score}.")
+        conf_matrix = confusion_matrix(y_test, y_predictions)
+        print(conf_matrix)
 
-#%% Loading the pickled model to predict playoff probabilities for this season.
-logistic_model = pickle.load(open('NHL_Playoff_Logistic_Model.pk1', 'rb'))
+        # Saving and exporting the model
+        pickle.dump(model, open(model_path, 'wb'))
+
+#%% Running the model - retraining and loading
+
+# Defaulted to not retrain model
+build_model(train_model = train_model)
+
+# Loading the pickled model to predict playoff probabilities for this season.
+logistic_model = pickle.load(open(model_path, 'rb'))
 
 X = model_prediction_data.drop(drop_columns, axis = 1)
 y_probabilities = logistic_model.predict_proba(X)
@@ -290,10 +308,9 @@ excel_drop_cols = ['Rank', 'Nickname', 'Year', 'T']
 
 # Creating Excel export file for email attachment
 this_season_excel_df = nhl_data_this_season.drop(columns = excel_drop_cols).sort_values(by = 'PTS%', ascending = False)
-# this_season_excel_df.to_excel("this_season_excel.xlsx", index = False)
-nhl_data_all_years.to_excel(f"nhl_team_data_{str(start_year)}_{str(this_season)}.xlsx", index = False, sheet_name = "Last 20 Seasons")
+# nhl_data_all_years.to_excel(last_20_seasons_excel_file_path, index = False, sheet_name = "Last 20 Seasons")
 
-# %% Creating Excel file for attachment and Tableau data source
+# %% Creating Excel file for attachment
 from openpyxl.utils.dataframe import dataframe_to_rows
 
 def update_sheet(df, file, sheet):
@@ -320,7 +337,8 @@ def update_sheet(df, file, sheet):
     workbook.save(file)
 
 # %% Writing the Excel 
-update_sheet(this_season_excel_df, '/Users/anthony/Desktop/VSFolder/Sports Analytics/NHL Analytics/this_season_excel.xlsx', 'Current Season Data')
+update_sheet(this_season_excel_df, attachment_file_path, 'Current Season Data')
+update_sheet(nhl_data_all_years, last_20_seasons_excel_file_path, 'Last 20 Seasons')
 
 # Hyperlinking Team column in html table to f"nhl.com/{team_abbrev}/"
 nhl_data_this_season.loc[:,"Team"] = nhl_data_this_season.apply(lambda row: f"<a href='https://www.nhl.com/{row.Nickname}/'>{row.Team}</a>", axis = 1)
@@ -351,13 +369,11 @@ You can find all the statistics for this season in the attached Excel file.
 this_season_html_df = this_season_html_df.replace('text-align: center;padding: 0px;width: 1000px"><a href', 'text-align: left;padding: 0px;width: 1000px"><a href')
 email_html = html_text + this_season_html_df
 
-with open('nhl_testing.html', 'w') as table:
+with open(nhl_html_table, 'w') as table:
     table.write(email_html)
 
 # %% Sending emails with attachment.
-
-from NHL_vars import my_email as sender_email, my_email_pw as password, receiver_list as receiver_emails, file_path as file_path
-
+    
 # Email and SMTP configuration
 smtp_server = 'smtp.gmail.com'
 smtp_port = 587
@@ -373,11 +389,11 @@ msg['Subject'] = f"NHL Playoff Predictions - Week of {dt.datetime.now().strftime
 msg.attach(MIMEText(email_html, 'html'))
 
 # Attach the Excel file
-with open(file_path, 'rb') as attachment:
+with open(attachment_file_path, 'rb') as attachment:
     part = MIMEBase('application', 'octet-stream')
     part.set_payload(attachment.read())
     encoders.encode_base64(part)
-    part.add_header('Content-Disposition', f"attachment; filename= {file_path}")
+    part.add_header('Content-Disposition', f"attachment; filename= {attachment_file_path}")
     msg.attach(part)
 
 # Connect to the SMTP server and send the email
