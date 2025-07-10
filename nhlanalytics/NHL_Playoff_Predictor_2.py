@@ -148,11 +148,11 @@ nhl_data_all_years = pd.DataFrame()
 for frame in cleaned_nhl_dfs:
    nhl_data_all_years = pd.concat([nhl_data_all_years, frame], ignore_index=True)
 
-nhl_data_all_years["T"].fillna(0, inplace = True)
+# nhl_data_all_years["T"].fillna(0, inplace = True)
 nhl_data_all_years["SOW"].fillna(0, inplace = True)
 nhl_data_all_years["SOL"].fillna(0, inplace = True)
 
-nhl_data_all_years = nhl_data_all_years.astype({'T': int, 'SOW':int, 'SOL':int})
+nhl_data_all_years = nhl_data_all_years.astype({'SOW':int, 'SOL':int})
 
 # Getting data for this season (for attached Excel and Tableau for comparisons)
 nhl_data_this_season = nhl_data_all_years[nhl_data_all_years["Year"] == str(this_season)]
@@ -173,7 +173,7 @@ def dist_visualizer(df, stat_list):
 if viz_stats:
 
     # Looking at numerical statistics' distributions to determine normalization or standardization
-    ignore_list = ['Rank', 'Team', 'GP', 'T', 'OL', 'POff', 'Year', 'SOW', 'SOL', 'Nickname']
+    ignore_list = ['Rank', 'Team', 'GP', 'OL', 'POff', 'Year', 'SOW', 'SOL', 'Nickname']
     stats_to_viz = [stat for stat in nhl_data_all_years.columns if stat not in ignore_list]
 
     # Visualizing historic data
@@ -240,7 +240,7 @@ nhl_model_data_final[f"POff_Last_{str(years_window)}Yr_Count"].fillna(0, inplace
 
 # %% Model construction 
 # Columns not used in model construction and predictions
-drop_columns = ['Rank', 'Team', 'T', 'OL', 'Nickname', 'Year', 'SOW', 'SOL', 'POff']
+drop_columns = ['Rank', 'Team', 'OL', 'Nickname', 'Year', 'SOW', 'SOL', 'POff']
 
 # Getting training/testing data - all previous seasons except first three and this season
 exclude_years = list(range(start_year, start_year + years_window))
@@ -284,7 +284,7 @@ def build_model(train_model):
 build_model(train_model = train_model)
 
 # Loading the pickled model to predict playoff probabilities for this season.
-logistic_model = pickle.load(open(model_path, 'rb'))
+logistic_model = pickle.load(open('/Users/anthony/Desktop/VSFolder/sports_analytics/nhlanalytics/NHL_Playoff_Logistic_Model.pk1', 'rb'))
 
 X = model_prediction_data.drop(drop_columns, axis = 1)
 y_probabilities = logistic_model.predict_proba(X)
@@ -304,7 +304,7 @@ nhl_data_this_season.loc[:,'POff%'] = nhl_data_this_season.loc[:,'POff%'].apply(
 
 # Setting columns for html and Excel files
 html_cols = ['Team', 'GP', 'W', 'L', 'OL', 'PTS', 'PTS%', 'GF/G', 'GA/G', 'GDiff/G','POff%']
-excel_drop_cols = ['Rank', 'Nickname', 'Year', 'T']
+excel_drop_cols = ['Rank', 'Nickname', 'Year']
 
 # Creating Excel export file for email attachment
 this_season_excel_df = nhl_data_this_season.drop(columns = excel_drop_cols).sort_values(by = 'PTS%', ascending = False)
@@ -337,8 +337,8 @@ def update_sheet(df, file, sheet):
     workbook.save(file)
 
 # %% Writing the Excel 
-update_sheet(this_season_excel_df, attachment_file_path, 'Current Season Data')
-update_sheet(nhl_data_all_years, last_20_seasons_excel_file_path, 'Last 20 Seasons')
+update_sheet(this_season_excel_df, '/Users/anthony/Desktop/VSFolder/sports_analytics/nhlanalytics/this_season_excel.xlsx', 'Current Season Data')
+update_sheet(nhl_data_all_years, '/Users/anthony/Desktop/VSFolder/sports_analytics/nhlanalytics/nhl_team_data_20_seasons.xlsx', 'Last 20 Seasons')
 
 # Hyperlinking Team column in html table to f"nhl.com/{team_abbrev}/"
 nhl_data_this_season.loc[:,"Team"] = nhl_data_this_season.apply(lambda row: f"<a href='https://www.nhl.com/{row.Nickname}/'>{row.Team}</a>", axis = 1)
