@@ -6,3 +6,5 @@ mlb_test.html
 NHL_vars.py
 __pycache__
 sports.env
+*.env
+*.json
