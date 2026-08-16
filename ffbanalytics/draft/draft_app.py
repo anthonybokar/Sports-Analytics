@@ -127,6 +127,42 @@ def build_filtered_turn_message(tracker: DraftTracker, user_input: str, keeper_n
 """
 
 
+DOC_EXTENSIONS = {"pdf", "txt", "csv", "md", "xlsx", "docx"}
+IMAGE_EXTENSIONS = {"png", "jpg", "jpeg"}
+
+
+def save_doc_attachment(uploaded_file, folder_path: str) -> str:
+    """Write a PDF/text/CSV attachment to context_docs so it becomes part of the
+    permanent, persistent context — picked up by load_context_folder() same as any
+    file you'd dropped in manually, surviving future app restarts too."""
+    os.makedirs(folder_path, exist_ok=True)
+    dest_path = os.path.join(folder_path, uploaded_file.name)
+    with open(dest_path, "wb") as f:
+        f.write(uploaded_file.getvalue())
+    return dest_path
+
+
+def rebuild_context_and_chat(client, tracker: DraftTracker, old_chat):
+    """Re-read context_docs (now including any newly-saved attachment), rebuild the
+    system instructions, and reset the chat session with a recap — same mechanism
+    RESET_EVERY_N_TURNS already uses, just triggered by a new file instead of a
+    turn count."""
+    extra_context = load_context_folder(CONTEXT_FOLDER)
+    new_system_instructions = build_system_instructions(extra_context)
+    new_chat = reset_chat_with_recap(client, new_system_instructions, tracker, old_chat)
+    return new_system_instructions, new_chat
+
+
+def build_image_part(uploaded_file):
+    """Images can't go into a text system instruction — they're sent as actual
+    image data in the message itself. This means an image persists for the rest
+    of THIS running session (it's part of chat history, resent every turn like
+    everything else) but won't survive a full app restart the way saved
+    PDF/text/CSV context does."""
+    from google.genai import types
+    return types.Part.from_bytes(data=uploaded_file.getvalue(), mime_type=uploaded_file.type)
+
+
 def load_adp_lookup(csv_path: str) -> dict:
     """Read the ADP consensus column (AVG) directly from the CSV, independent of
     DraftTracker, so draft_agent.py stays untouched. Returns
@@ -257,14 +293,43 @@ with col_chat:
         else:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
+                for name in msg.get("attachments", []):
+                    st.caption(f"📎 {name}")
 
-    user_input = st.chat_input("Ask about matchups, tiers, who to target next...")
-    if user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
+    chat_submission = st.chat_input(
+        "Ask about matchups, tiers, who to target next... (attach files with the + icon)",
+        accept_file="multiple",
+        file_type=["png", "jpg", "jpeg", "pdf", "txt", "csv", "md", "xlsx","docx"],
+    )
+
+    if chat_submission:
+        user_input = chat_submission.text or ""
+        uploaded_files = chat_submission.files or []
+
+        doc_files = [f for f in uploaded_files if f.name.rsplit(".", 1)[-1].lower() in DOC_EXTENSIONS]
+        image_files = [f for f in uploaded_files if f.name.rsplit(".", 1)[-1].lower() in IMAGE_EXTENSIONS]
+        attachment_names = [f.name for f in uploaded_files]
+
+        display_text = user_input if user_input else "(attachment only)"
+        st.session_state.messages.append(
+            {"role": "user", "content": display_text, "attachments": attachment_names}
+        )
         with st.chat_message("user"):
-            st.markdown(user_input)
+            st.markdown(display_text)
+            for name in attachment_names:
+                st.caption(f"📎 {name}")
 
-        if st.session_state.turns_since_reset >= RESET_EVERY_N_TURNS:
+        # --- Permanent doc attachments: save to context_docs, then rebuild + reset ---
+        if doc_files:
+            with st.spinner(f"Saving {len(doc_files)} file(s) to permanent context and rebuilding..."):
+                for f in doc_files:
+                    save_doc_attachment(f, CONTEXT_FOLDER)
+                st.session_state.keeper_names = extract_keeper_names(CONTEXT_FOLDER, tracker)
+                st.session_state.system_instructions, st.session_state.chat = rebuild_context_and_chat(
+                    st.session_state.client, tracker, st.session_state.chat
+                )
+                st.session_state.turns_since_reset = 0
+        elif st.session_state.turns_since_reset >= RESET_EVERY_N_TURNS:
             with st.spinner("Summarizing context and resetting chat history..."):
                 st.session_state.chat = reset_chat_with_recap(
                     st.session_state.client,
@@ -274,12 +339,14 @@ with col_chat:
                 )
             st.session_state.turns_since_reset = 0
 
+        # --- Image attachments: sent as actual image data alongside this turn's text ---
+        message_parts = [build_filtered_turn_message(tracker, user_input, st.session_state.keeper_names)]
+        message_parts.extend(build_image_part(f) for f in image_files)
+
         with st.chat_message("assistant"):
             placeholder = st.empty()
             full_text = ""
-            response_stream = st.session_state.chat.send_message_stream(
-                build_filtered_turn_message(tracker, user_input, st.session_state.keeper_names)
-            )
+            response_stream = st.session_state.chat.send_message_stream(message_parts)
             for chunk in response_stream:
                 if chunk.text:
                     full_text += chunk.text
