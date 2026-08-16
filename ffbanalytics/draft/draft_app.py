@@ -114,13 +114,40 @@ def filter_out_keepers(df: pd.DataFrame, keeper_names: set) -> pd.DataFrame:
 
 
 def build_filtered_turn_message(tracker: DraftTracker, user_input: str, keeper_names: set) -> str:
-    """Same shape/purpose as draft_agent.build_turn_message, but built from
-    a pool that also excludes keepers — so the model never sees them as draftable.
-    Kept local (not imported) so draft_agent.py stays untouched."""
+    """Same shape/purpose as draft_agent.build_turn_message (roster, scarcity, bye
+    collisions), but built from a pool that also excludes keepers — so the model
+    never sees them as draftable. Kept local so draft_agent.py's own version stays
+    the source of truth for the CLI's identical logic."""
     filtered = filter_out_keepers(tracker.available_df(), keeper_names).head(tracker.top_n)
     table_md = filtered.to_markdown(index=False) if not filtered.empty else "No players loaded."
+
+    position_counts = tracker.roster_position_counts()
+    roster_line = ", ".join(f"{pos}: {count}" for pos, count in position_counts.items()) or "No players drafted to your team yet"
+
+    scarcity_df = tracker.tier_scarcity()
+    if not scarcity_df.empty:
+        scarce = scarcity_df[scarcity_df["Scarce"]]
+        scarcity_line = "; ".join(
+            f"{row['Position']}: only {row['Players Left in Tier']} left in Tier {row['Best Remaining Tier']}"
+            for _, row in scarce.iterrows()
+        ) if not scarce.empty else "No immediate tier cliffs"
+    else:
+        scarcity_line = "No tier data available"
+
+    bye_collisions = tracker.bye_week_collisions()
+    bye_line = "; ".join(f"Week {wk}: {count} players" for wk, count in bye_collisions.items()) if bye_collisions else "None"
+
     return f"""### CURRENT AVAILABLE PLAYERS (top {tracker.top_n}, already excludes drafted and keeper players)
 {table_md}
+
+### YOUR ROSTER SO FAR (by position)
+{roster_line}
+
+### POSITIONAL SCARCITY / TIER CLIFFS (available players only)
+{scarcity_line}
+
+### YOUR BYE WEEK COLLISIONS (3+ players sharing a bye)
+{bye_line}
 
 ### USER MESSAGE
 {user_input}
@@ -236,6 +263,16 @@ col_chat, col_side = st.columns([2, 1])
 # --- Sidebar column: live available board (click to draft) + drafted list ---
 with col_side:
     st.subheader("Available Players")
+
+    st.session_state.setdefault("draft_for_team", "Opponent")
+    st.session_state.draft_for_team = st.radio(
+        "Drafting for:",
+        options=["Opponent", tracker.my_team_name],
+        horizontal=True,
+        key="draft_for_team_radio",
+        index=0 if st.session_state.draft_for_team == "Opponent" else 1,
+    )
+
     avail_df = filter_out_keepers(tracker.available_df(), st.session_state.keeper_names).head(tracker.top_n)
 
     if st.session_state.keeper_names:
@@ -259,7 +296,7 @@ with col_side:
     if selection_event and selection_event.selection and selection_event.selection.rows:
         selected_row = selection_event.selection.rows[0]
         selected_player = avail_df.iloc[selected_row]["Player"]
-        result_msg = tracker.draft_player(selected_player)
+        result_msg = tracker.draft_player(selected_player, team=st.session_state.draft_for_team)
         st.session_state.messages.append({"role": "system", "content": result_msg})
         # New key forces a fresh, unselected table on rerun so the same click
         # can't re-trigger a draft action repeatedly.
@@ -268,6 +305,37 @@ with col_side:
 
     st.subheader("Drafted Players")
     st.text(tracker.drafted_summary())
+    if st.button("↩️ Undo Last Pick"):
+        undo_msg = tracker.undo_last()
+        st.session_state.messages.append({"role": "system", "content": undo_msg})
+        st.session_state.board_key_counter += 1
+        st.rerun()
+
+    st.subheader("🧢 My Roster")
+    my_roster_df = tracker.roster_df()
+    if my_roster_df.empty:
+        st.caption("No players drafted to your team yet.")
+    else:
+        st.dataframe(my_roster_df, hide_index=True, width="stretch")
+        counts = tracker.roster_position_counts()
+        if counts:
+            st.caption("Positions: " + ", ".join(f"{pos} {n}" for pos, n in counts.items()))
+        bye_collisions = tracker.bye_week_collisions()
+        if bye_collisions:
+            st.warning(
+                "Bye week collision: " + ", ".join(f"Week {wk} ({n} players)" for wk, n in bye_collisions.items())
+            )
+
+    st.subheader("⚠️ Tier Cliffs")
+    scarcity_df = tracker.tier_scarcity()
+    if scarcity_df.empty:
+        st.caption("No tier data available.")
+    else:
+        scarce_only = scarcity_df[scarcity_df["Scarce"]]
+        if scarce_only.empty:
+            st.caption("No immediate tier cliffs.")
+        else:
+            st.dataframe(scarce_only.drop(columns=["Scarce"]), hide_index=True, width="stretch")
 
 # --- Main column: value/best-available panels above the chat, then chat itself ---
 with col_chat:
