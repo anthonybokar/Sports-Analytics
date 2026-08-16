@@ -8,3 +8,8 @@ __pycache__
 sports.env
 *.env
 *.json
+*.venv
+.ffbvenv
+.ffbvenv-dev
+*.csv
+context_docs
