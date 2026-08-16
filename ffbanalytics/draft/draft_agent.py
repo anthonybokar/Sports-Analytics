@@ -99,7 +99,7 @@ class DraftTracker:
         return "\n".join(f"{d['pick_no']}. {d['player']}" for d in rows)
 
 
-def load_context_folder(folder_path: str, max_chars: int = 60000) -> str:
+def load_context_folder(folder_path: str, max_chars: int = 1000000) -> str:
     """Load supplementary reference files (.txt, .md, .csv, .pdf, .xlsx) from a local folder and
     concatenate them for injection into the system prompt. Static, loaded once at startup —
     good for cheat sheets, league rules, sleeper notes, injury reports, etc.
@@ -112,7 +112,7 @@ def load_context_folder(folder_path: str, max_chars: int = 60000) -> str:
     """
     if not os.path.isdir(folder_path):
         return ""
-    supported_ext = {".txt", ".md", ".csv", ".pdf", ".xlsx"}
+    supported_ext = {".txt", ".md", ".csv", ".pdf", ".xlsx", ".rtf"}
     sections = []
     total_chars = 0
     for fname in sorted(os.listdir(folder_path)):
