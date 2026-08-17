@@ -34,6 +34,19 @@ NUM_TEAMS = 12  # your league size — used to convert overall pick number into 
 
 st.set_page_config(page_title="Fantasy Draft Assistant", layout="wide")
 
+# Streamlit headers don't expose a font-size parameter directly, so this trims
+# h1/h2/h3 (title/header/subheader) sizes a bit via CSS rather than per-call.
+st.markdown(
+    """
+    <style>
+    h1 { font-size: 1.9rem !important; }
+    h2 { font-size: 1.4rem !important; }
+    h3 { font-size: 1.15rem !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 if not os.getenv("GEMINI_API_KEY"):
     st.error("GEMINI_API_KEY not found in environment variables. Check your .env file.")
     st.stop()
@@ -258,74 +271,121 @@ tracker = st.session_state.tracker
 
 st.title("🏈 Fantasy Draft Assistant")
 
-col_chat, col_side = st.columns([2, 1])
+# --- Top container: header row, then Available Players, then Best Value/Best Available, then trends ---
+with st.container(border=True):
+    keeper_col, drafted_col, undo_col = st.columns([2, 1, 1])
 
-# --- Sidebar column: live available board (click to draft) + drafted list ---
-with col_side:
+    with keeper_col:
+        if st.session_state.keeper_names:
+            with st.expander(f"🔒 {len(st.session_state.keeper_names)} keeper(s) excluded — click to verify"):
+                keeper_rows = tracker.df[
+                    tracker.df["Player"].apply(lambda p: DraftTracker._normalize(p) in st.session_state.keeper_names)
+                ]
+                st.dataframe(keeper_rows[["Player"]], hide_index=True, width="stretch")
+                st.caption("If a keeper is missing here, check the spelling/formatting in your keepers file.")
+
+    with drafted_col:
+        with st.popover("📋 Drafted Players", width="stretch"):
+            st.text(tracker.drafted_summary())
+
+    with undo_col:
+        if st.button("↩️ Undo Last Pick"):
+            undo_msg = tracker.undo_last()
+            st.toast(undo_msg, icon="↩️")
+            st.session_state.board_key_counter += 1
+            st.rerun()
+
     st.subheader("Available Players")
 
-    st.session_state.setdefault("draft_for_team", "Opponent")
-    st.session_state.draft_for_team = st.radio(
-        "Drafting for:",
-        options=["Opponent", tracker.my_team_name],
-        horizontal=True,
-        key="draft_for_team_radio",
-        index=0 if st.session_state.draft_for_team == "Opponent" else 1,
-    )
+    avail_df = filter_out_keepers(tracker.available_df(), st.session_state.keeper_names).head(tracker.top_n).copy()
 
-    avail_df = filter_out_keepers(tracker.available_df(), st.session_state.keeper_names).head(tracker.top_n)
+    my_col = f"✅ {tracker.my_team_name}"
+    opp_col = "✅ Opponent"
+    avail_df[my_col] = False
+    avail_df[opp_col] = False
+    original_cols = [c for c in avail_df.columns if c not in (my_col, opp_col)]
 
-    if st.session_state.keeper_names:
-        with st.expander(f"🔒 {len(st.session_state.keeper_names)} keeper(s) excluded — click to verify"):
-            keeper_rows = tracker.df[
-                tracker.df["Player"].apply(lambda p: DraftTracker._normalize(p) in st.session_state.keeper_names)
-            ]
-            st.dataframe(keeper_rows[["Player"]], hide_index=True, width="stretch")
-            st.caption("If a keeper is missing here, check the spelling/formatting in your keepers file.")
-
-    selection_event = st.dataframe(
+    edited_df = st.data_editor(
         avail_df,
         width="stretch",
         hide_index=True,
         height=420,
-        on_select="rerun",
-        selection_mode="single-row",
-        key=f"board_table_{st.session_state.board_key_counter}",
+        disabled=original_cols,  # only the two checkbox columns are actually editable
+        column_config={
+            my_col: st.column_config.CheckboxColumn(help=f"Check to draft this player to {tracker.my_team_name}"),
+            opp_col: st.column_config.CheckboxColumn(help="Check to draft this player to an opponent"),
+        },
+        key=f"board_editor_{st.session_state.board_key_counter}",
     )
 
-    if selection_event and selection_event.selection and selection_event.selection.rows:
-        selected_row = selection_event.selection.rows[0]
-        selected_player = avail_df.iloc[selected_row]["Player"]
-        result_msg = tracker.draft_player(selected_player, team=st.session_state.draft_for_team)
-        st.session_state.messages.append({"role": "system", "content": result_msg})
-        # New key forces a fresh, unselected table on rerun so the same click
+    my_picks = edited_df[edited_df[my_col]]
+    opp_picks = edited_df[edited_df[opp_col]]
+
+    picked_player, picked_team = None, None
+    if not my_picks.empty:
+        picked_player, picked_team = my_picks.iloc[0]["Player"], tracker.my_team_name
+    elif not opp_picks.empty:
+        picked_player, picked_team = opp_picks.iloc[0]["Player"], "Opponent"
+
+    if picked_player:
+        result_msg = tracker.draft_player(picked_player, team=picked_team)
+        st.toast(result_msg, icon="🏈")
+        # New key forces a fresh, unchecked table on rerun so the same click
         # can't re-trigger a draft action repeatedly.
         st.session_state.board_key_counter += 1
         st.rerun()
 
-    st.subheader("Drafted Players")
-    st.text(tracker.drafted_summary())
-    if st.button("↩️ Undo Last Pick"):
-        undo_msg = tracker.undo_last()
-        st.session_state.messages.append({"role": "system", "content": undo_msg})
-        st.session_state.board_key_counter += 1
-        st.rerun()
+    val_col, best_col, roster_col = st.columns(3)
 
-    st.subheader("🧢 My Roster")
-    my_roster_df = tracker.roster_df()
-    if my_roster_df.empty:
-        st.caption("No players drafted to your team yet.")
-    else:
-        st.dataframe(my_roster_df, hide_index=True, width="stretch")
-        counts = tracker.roster_position_counts()
-        if counts:
-            st.caption("Positions: " + ", ".join(f"{pos} {n}" for pos, n in counts.items()))
-        bye_collisions = tracker.bye_week_collisions()
-        if bye_collisions:
-            st.warning(
-                "Bye week collision: " + ", ".join(f"Week {wk} ({n} players)" for wk, n in bye_collisions.items())
-            )
+    with val_col:
+        st.subheader("📈 Best Value")
+        value_df = get_best_value_picks(tracker, st.session_state.adp_lookup, st.session_state.keeper_names, top_n=5)
+        if value_df.empty:
+            st.caption("No standout value picks yet.")
+        else:
+            st.dataframe(value_df, hide_index=True, width="content")
 
+    with best_col:
+        st.subheader("⭐ Best Available")
+        best_df = get_best_available(tracker, st.session_state.keeper_names, top_n=5)
+        if best_df.empty:
+            st.caption("No players loaded.")
+        else:
+            st.dataframe(best_df, hide_index=True, width="content")
+
+    with roster_col:
+        st.subheader("🧢 My Roster")
+        my_roster_df = tracker.roster_df()
+        if my_roster_df.empty:
+            st.caption("No players drafted to your team yet.")
+        else:
+            st.dataframe(my_roster_df, hide_index=True, width="content")
+            counts = tracker.roster_position_counts()
+            if counts:
+                st.caption("Positions: " + ", ".join(f"{pos} {n}" for pos, n in counts.items()))
+
+            if "Bye" not in tracker.df.columns:
+                st.caption("⚠️ No 'Bye' column found in your rankings CSV — check the exact column header name.")
+            else:
+                bye_collisions = tracker.bye_week_collisions()
+                if bye_collisions:
+                    st.warning(
+                        "Bye week collision: " + ", ".join(f"Week {wk} ({n} players)" for wk, n in bye_collisions.items())
+                    )
+                else:
+                    st.caption("No bye week collisions yet (3+ players needed on the same bye to flag).")
+
+    with st.popover("📊 Draft Trends: Positions by Round", width="stretch"):
+        trend_df = build_round_position_chart_data(tracker, NUM_TEAMS)
+        if trend_df.empty:
+            st.caption("No picks yet — this chart fills in as players get drafted.")
+        else:
+            st.bar_chart(trend_df)
+
+# --- Bottom row: chat on the left, tier-cliff info on the right ---
+col_chat, col_side = st.columns([2, 1])
+
+with col_side:
     st.subheader("⚠️ Tier Cliffs")
     scarcity_df = tracker.tier_scarcity()
     if scarcity_df.empty:
@@ -337,32 +397,13 @@ with col_side:
         else:
             st.dataframe(scarce_only.drop(columns=["Scarce"]), hide_index=True, width="stretch")
 
-# --- Main column: value/best-available panels above the chat, then chat itself ---
 with col_chat:
-    st.subheader("📈 Best Value Available")
-    value_df = get_best_value_picks(tracker, st.session_state.adp_lookup, st.session_state.keeper_names, top_n=5)
-    if value_df.empty:
-        st.caption("No standout value picks yet — check back as more picks are made.")
-    else:
-        st.dataframe(value_df, hide_index=True, width="stretch")
-
-    st.subheader("⭐ Best Available")
-    best_df = get_best_available(tracker, st.session_state.keeper_names, top_n=5)
-    if best_df.empty:
-        st.caption("No players loaded.")
-    else:
-        st.dataframe(best_df, hide_index=True, width="stretch")
-
-    st.divider()
     st.subheader("Chat")
     for msg in st.session_state.messages:
-        if msg["role"] == "system":
-            st.info(msg["content"])
-        else:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-                for name in msg.get("attachments", []):
-                    st.caption(f"📎 {name}")
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            for name in msg.get("attachments", []):
+                st.caption(f"📎 {name}")
 
     chat_submission = st.chat_input(
         "Ask about matchups, tiers, who to target next... (attach files with the + icon)",
@@ -422,12 +463,3 @@ with col_chat:
 
         st.session_state.messages.append({"role": "assistant", "content": full_text})
         st.session_state.turns_since_reset += 1
-
-# --- Draft trends: positions taken per round, full width below the main layout ---
-st.divider()
-st.subheader("Draft Trends: Positions by Round")
-trend_df = build_round_position_chart_data(tracker, NUM_TEAMS)
-if trend_df.empty:
-    st.caption("No picks yet — this chart fills in as players get drafted.")
-else:
-    st.bar_chart(trend_df)
