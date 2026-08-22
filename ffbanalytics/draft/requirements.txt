@@ -5,3 +5,4 @@ pypdf
 openpyxl
 tabulate
 streamlit
+requests
