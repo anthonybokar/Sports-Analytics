@@ -12,4 +12,5 @@ sports.env
 .ffbvenv
 .ffbvenv-dev
 *.csv
-context_docs
+context_docs_yahoo
+context_docs_espn
