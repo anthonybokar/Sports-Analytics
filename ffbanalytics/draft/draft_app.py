@@ -14,12 +14,12 @@ import os
 from dotenv import load_dotenv
 import pandas as pd
 import streamlit as st
-from pypdf import PdfReader
 from google import genai
 
 from draft_agent import (
     DraftTracker,
     load_context_folder,
+    parse_league_config,
     build_system_instructions,
     create_chat_session,
     reset_chat_with_recap,
@@ -29,8 +29,60 @@ from draft_agent import (
 load_dotenv()
 
 CSV_PATH = "FantasyPros_2026_Overall_ADP_Rankings.csv"
-CONTEXT_FOLDER = "context_docs"
+# CONTEXT_FOLDER = "context_docs_espn"
+CONTEXT_FOLDER = "context_docs_yahoo"
 NUM_TEAMS = 12  # your league size — used to convert overall pick number into round number
+
+# --- Quick prompt buttons: canned questions that reuse the exact same send path
+# as manually typed chat, so they go through normal context-loading and the
+# RESET_EVERY_N_TURNS logic without any special-casing. ---
+QUICK_PROMPTS = {
+    "💰 Value": (
+        "Based on current ADP vs. my rankings, who represents the biggest value at my "
+        "next pick — and is there a tier cliff coming up in the next 5-8 picks I should "
+        "jump ahead of?"
+    ),
+    "🏃 Run Check": (
+        "Which position is being drafted faster than ADP suggests right now, and does "
+        "that change how I should prioritize my next two picks?"
+    ),
+    "🏗️ Roster": (
+        "Given my roster so far and my league's roster requirements based on league settings, what "
+        "positions am I at risk of punting, and what's my latest 'safe' round to wait "
+        "on each?"
+    ),
+    "🔒 Keepers": (
+        "Excluding all keepers, who are the top 3 players at each position of need "
+        "still available, and how does that shift my next-pick strategy?"
+    ),
+    "📋 Recap": (
+        "Give me a quick recap: my roster, my remaining needs, and the single best "
+        "available player regardless of position."
+    ),
+}
+
+# --- Injury/news check: appended to the turn message (not the static system
+# instructions) so it can be toggled per-message without rebuilding/resetting
+# the chat session. Relies on Google Search grounding already being enabled
+# in create_chat_session(). ---
+INJURY_NEWS_INSTRUCTION = """
+### INJURY & NEWS CHECK (required for this turn)
+For any player you recommend or mention by name, use search to check their latest
+injury status and any notable non-injury news before including them.
+
+Severity judgment:
+- FLAG PROMINENTLY (real risk to the recommendation): torn ligament/muscle, surgery,
+  IR designation, "out indefinitely," multi-week "week-to-week," fracture.
+- NOTE BUT DON'T DOWNGRADE: "questionable," "day-to-day," soreness/tightness, veteran
+  rest day, minor illness, limited practice participation.
+- Non-injury news: surface anything materially relevant to role/opportunity
+  (suspension, depth chart change, coaching change, contract/holdout). Don't let minor
+  news override a rankings-based recommendation — just inform the pick.
+
+Add a brief "Status:" line only when there's something worth noting. Omit it entirely
+for players with nothing notable — don't clutter every recommendation with "no notable
+news."
+"""
 
 st.set_page_config(page_title="Fantasy Draft Assistant", layout="wide")
 
@@ -60,8 +112,15 @@ def build_round_position_chart_data(tracker: DraftTracker, num_teams: int) -> pd
 
     rows = []
     for info in tracker.drafted.values():
-        player, pick_no = info["player"], info["pick_no"]
-        round_no = (pick_no - 1) // num_teams + 1
+        player = info["player"]
+        if info.get("is_keeper"):
+            round_no = info.get("keeper_round")
+        elif info.get("round"):
+            round_no = info["round"]  # accurate slot from the precomputed pick sequence
+        else:
+            round_no = (info["pick_no"] - 1) // num_teams + 1  # fallback: no sequence configured
+        if round_no is None:
+            continue
         match = tracker.df[tracker.df["Player"] == player]
         position = match["Position"].iloc[0] if not match.empty and "Position" in tracker.df.columns else "Unknown"
         rows.append({"Round": round_no, "Position": position})
@@ -72,67 +131,17 @@ def build_round_position_chart_data(tracker: DraftTracker, num_teams: int) -> pd
     return pivot
 
 
-def find_keeper_files(folder_path: str) -> list:
-    """Auto-detect any file in the context folder whose name contains 'keeper'."""
-    if not os.path.isdir(folder_path):
-        return []
-    supported_ext = {".pdf", ".txt", ".md", ".csv"}
-    return [
-        os.path.join(folder_path, f)
-        for f in os.listdir(folder_path)
-        if "keeper" in f.lower() and os.path.splitext(f)[1].lower() in supported_ext
-    ]
-
-
-def _extract_raw_text(fpath: str) -> str:
-    ext = os.path.splitext(fpath)[1].lower()
-    try:
-        if ext == ".pdf":
-            reader = PdfReader(fpath)
-            return "\n".join(page.extract_text() or "" for page in reader.pages)
-        elif ext == ".csv":
-            return pd.read_csv(fpath).to_string()
-        else:
-            with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
-                return f.read()
-    except Exception:
-        return ""
-
-
-def extract_keeper_names(folder_path: str, tracker: DraftTracker) -> set:
-    """Detect keeper files, then check every known player name from the rankings
-    pool against the raw extracted text. This sidesteps parsing the PDF's actual
-    layout (table, list, whatever) — it just checks whether each known name shows
-    up anywhere in the document, using the same normalization DraftTracker uses."""
-    files = find_keeper_files(folder_path)
-    if not files:
-        return set()
-    combined_text = " ".join(_extract_raw_text(f) for f in files)
-    normalized_text = DraftTracker._normalize(combined_text)
-    if not normalized_text:
-        return set()
-    keeper_names = set()
-    for player in tracker.df["Player"].tolist():
-        norm_player = DraftTracker._normalize(player)
-        if norm_player and norm_player in normalized_text:
-            keeper_names.add(norm_player)
-    return keeper_names
-
-
-def filter_out_keepers(df: pd.DataFrame, keeper_names: set) -> pd.DataFrame:
-    if df.empty or not keeper_names:
-        return df
-    mask = ~df["Player"].apply(lambda p: DraftTracker._normalize(p) in keeper_names)
-    return df[mask]
-
-
-def build_filtered_turn_message(tracker: DraftTracker, user_input: str, keeper_names: set) -> str:
+def build_turn_message_ui(tracker: DraftTracker, user_input: str, injury_check: bool = False) -> str:
     """Same shape/purpose as draft_agent.build_turn_message (roster, scarcity, bye
-    collisions), but built from a pool that also excludes keepers — so the model
-    never sees them as draftable. Kept local so draft_agent.py's own version stays
-    the source of truth for the CLI's identical logic."""
-    filtered = filter_out_keepers(tracker.available_df(), keeper_names).head(tracker.top_n)
-    table_md = filtered.to_markdown(index=False) if not filtered.empty else "No players loaded."
+    collisions). Keepers no longer need a separate filter pass here — register_keepers()
+    puts them directly into tracker.drafted, so tracker.available_df() already excludes
+    them the same way it excludes any other drafted player. Kept local so
+    draft_agent.py's own version stays the source of truth for the CLI's identical logic.
+
+    injury_check=True appends INJURY_NEWS_INSTRUCTION so the assistant searches for
+    and reports the latest injury/news status on any player it recommends this turn."""
+    avail = tracker.available_df().head(tracker.top_n)
+    table_md = avail.to_markdown(index=False) if not avail.empty else "No players loaded."
 
     position_counts = tracker.roster_position_counts()
     roster_line = ", ".join(f"{pos}: {count}" for pos, count in position_counts.items()) or "No players drafted to your team yet"
@@ -150,8 +159,19 @@ def build_filtered_turn_message(tracker: DraftTracker, user_input: str, keeper_n
     bye_collisions = tracker.bye_week_collisions()
     bye_line = "; ".join(f"Week {wk}: {count} players" for wk, count in bye_collisions.items()) if bye_collisions else "None"
 
+    keeper_entries = [d for d in tracker.drafted.values() if d.get("is_keeper")]
+    keeper_line = (
+        ", ".join(f"{d['player']} ({d.get('team', '?')})" for d in keeper_entries)
+        if keeper_entries else "No keepers loaded this session"
+    )
+
+    injury_block = INJURY_NEWS_INSTRUCTION if injury_check else ""
+
     return f"""### CURRENT AVAILABLE PLAYERS (top {tracker.top_n}, already excludes drafted and keeper players)
 {table_md}
+
+### KEEPERS (excluded from the pool above — these are NOT available to draft, already held by their original owners)
+{keeper_line}
 
 ### YOUR ROSTER SO FAR (by position)
 {roster_line}
@@ -161,7 +181,7 @@ def build_filtered_turn_message(tracker: DraftTracker, user_input: str, keeper_n
 
 ### YOUR BYE WEEK COLLISIONS (3+ players sharing a bye)
 {bye_line}
-
+{injury_block}
 ### USER MESSAGE
 {user_input}
 """
@@ -219,35 +239,77 @@ def load_adp_lookup(csv_path: str) -> dict:
     }
 
 
-def get_best_value_picks(tracker: DraftTracker, adp_lookup: dict, keeper_names: set, top_n: int = 5) -> pd.DataFrame:
+def get_best_value_picks(tracker: DraftTracker, adp_lookup: dict, top_n: int = 5) -> pd.DataFrame:
     """Players still available whose consensus ADP suggests they should already be
     gone, given how many picks have happened league-wide so far. Bigger gap = bigger
-    value. Recomputed fresh every call, so it naturally updates as picks are made."""
-    avail = filter_out_keepers(tracker.available_df(), keeper_names).copy()
+    value. Recomputed fresh every call, so it naturally updates as picks are made.
+
+    Uses tracker.true_overall_pick_count() rather than the raw pick_counter, so keeper-
+    forfeited draft slots (which the live draft silently skips) are counted as already
+    "off the board" once the draft reaches that round — otherwise "picks made league-wide"
+    undercounts and skews Value Gap low. Falls back to the plain pick_counter if
+    DRAFT_ORDER/ROUNDS haven't been configured in league_config.txt.
+    """
+    avail = tracker.available_df().copy()
     if avail.empty or not adp_lookup:
         return pd.DataFrame()
     avail["ADP"] = avail["Player"].apply(lambda p: adp_lookup.get(DraftTracker._normalize(p)))
     avail = avail.dropna(subset=["ADP"])
     if avail.empty:
         return pd.DataFrame()
-    avail["Value Gap"] = (tracker.pick_counter - avail["ADP"]).round(1)
+    avail["Value Gap"] = (tracker.true_overall_pick_count() - avail["ADP"]).round(1)
     avail = avail[avail["Value Gap"] > 0].sort_values("Value Gap", ascending=False).head(top_n)
     cols = [c for c in ["Player", "Position", "Team", "Tier", "ADP", "Value Gap"] if c in avail.columns]
     return avail[cols].reset_index(drop=True)
 
 
-def get_best_available(tracker: DraftTracker, keeper_names: set, top_n: int = 5) -> pd.DataFrame:
+def get_best_available(tracker: DraftTracker, top_n: int = 5) -> pd.DataFrame:
     """Simple top-N of the current available pool (keepers excluded), ranked as-is."""
-    avail = filter_out_keepers(tracker.available_df(), keeper_names).head(top_n)
+    avail = tracker.available_df().head(top_n)
     cols = [c for c in ["Rank", "Player", "Position", "Team", "Tier", "VORP"] if c in avail.columns]
     return avail[cols].reset_index(drop=True)
 
 
+def build_draft_log_df(tracker: DraftTracker) -> pd.DataFrame:
+    """Full draft history (both teams), in pick order, with position/NFL team/tier/bye
+    joined in from the rankings — suitable for a CSV export at the end of a draft."""
+    if not tracker.drafted:
+        return pd.DataFrame(columns=["Pick", "Player", "Drafted By", "Position", "Team", "Tier", "Bye"])
+    rows = []
+    for info in sorted(tracker.drafted.values(), key=lambda d: d["pick_no"]):
+        match = tracker.df[tracker.df["Player"] == info["player"]]
+        row = {"Pick": info["pick_no"], "Player": info["player"], "Drafted By": info.get("team", "Opponent")}
+        for col in ["Position", "Team", "Tier", "Bye"]:
+            if col in match.columns and not match.empty:
+                row[col] = match[col].iloc[0]
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
 # --- One-time setup, persisted across Streamlit reruns via session_state ---
 if "tracker" not in st.session_state:
-    st.session_state.tracker = DraftTracker(CSV_PATH, top_n=150)
+    league_config = parse_league_config(os.path.join(CONTEXT_FOLDER, "league_config.txt"))
+    my_team_name = league_config["my_team_name"] or "My Team"
+    if not league_config["my_team_name"]:
+        st.warning(
+            "No MY_TEAM_NAME found in context_docs/league_config.txt — defaulting to "
+            "'My Team'. Add that file (or the MY_TEAM_NAME line) so keepers land on the right roster."
+        )
+
+    st.session_state.tracker = DraftTracker(CSV_PATH, top_n=150, my_team_name=my_team_name)
     st.session_state.adp_lookup = load_adp_lookup(CSV_PATH)
-    st.session_state.keeper_names = extract_keeper_names(CONTEXT_FOLDER, st.session_state.tracker)
+    st.session_state.keeper_warnings = st.session_state.tracker.register_keepers(
+        league_config["keepers"], my_team_name
+    )
+    if league_config["draft_order"] and league_config["num_rounds"]:
+        st.session_state.tracker.configure_pick_sequence(
+            league_config["draft_order"], league_config["num_rounds"]
+        )
+    else:
+        st.warning(
+            "No DRAFT_ORDER/ROUNDS found in league_config.txt — the Round/Pick tracker and "
+            "ADP value gap won't account for keeper-skipped slots until those are added."
+        )
     extra_context = load_context_folder(CONTEXT_FOLDER)
     st.session_state.system_instructions = build_system_instructions(extra_context)
     st.session_state.client = genai.Client()
@@ -257,15 +319,18 @@ if "tracker" not in st.session_state:
     st.session_state.messages = []  # display history: {"role": "user"/"assistant"/"system", "content": str}
     st.session_state.turns_since_reset = 0
     st.session_state.board_key_counter = 0  # bumped after each draft click to reset table selection
+    st.session_state.injury_check_enabled = False  # toggle: search for latest injury/news on recommended players
 
     init_response = st.session_state.chat.send_message(
-        build_filtered_turn_message(
+        build_turn_message_ui(
             st.session_state.tracker,
             "Confirm that you have loaded my rankings. List my top 3 overall players.",
-            st.session_state.keeper_names,
         )
     )
     st.session_state.messages.append({"role": "assistant", "content": init_response.text})
+
+for w in st.session_state.get("keeper_warnings", []):
+    st.warning(w)
 
 tracker = st.session_state.tracker
 
@@ -273,20 +338,63 @@ st.title("🏈 Fantasy Draft Assistant")
 
 # --- Top container: header row, then Available Players, then Best Value/Best Available, then trends ---
 with st.container(border=True):
-    keeper_col, drafted_col, undo_col = st.columns([2, 1, 1])
+    keeper_col, drafted_col, undo_col, pick_status_col = st.columns([2, 1, 1, 1.3])
 
+    keeper_entries = [d for d in tracker.drafted.values() if d.get("is_keeper")]
     with keeper_col:
-        if st.session_state.keeper_names:
-            with st.expander(f"🔒 {len(st.session_state.keeper_names)} keeper(s) excluded — click to verify"):
-                keeper_rows = tracker.df[
-                    tracker.df["Player"].apply(lambda p: DraftTracker._normalize(p) in st.session_state.keeper_names)
-                ]
-                st.dataframe(keeper_rows[["Player"]], hide_index=True, width="stretch")
-                st.caption("If a keeper is missing here, check the spelling/formatting in your keepers file.")
+        if keeper_entries:
+            with st.expander(f"🔒 {len(keeper_entries)} keeper(s) excluded — click to verify"):
+                keeper_df = pd.DataFrame([
+                    {"Player": d["player"], "Team": d.get("team"), "Keeper Cost": f"Rd {d['keeper_round']}" if d.get("keeper_round") else "?"}
+                    for d in sorted(keeper_entries, key=lambda d: d["player"])
+                ])
+                st.dataframe(keeper_df, hide_index=True, width="stretch")
+                st.caption("If a keeper is missing here, check league_config.txt spelling against the rankings CSV.")
 
     with drafted_col:
-        with st.popover("📋 Drafted Players", width="stretch"):
-            st.text(tracker.drafted_summary())
+        with st.popover("📋 Edit Draft Log", width="stretch"):
+            if not tracker.drafted:
+                st.caption("No picks logged yet.")
+            else:
+                log_rows = [
+                    {
+                        "Pick": (f"Keeper (Rd {d['keeper_round']})" if d.get("keeper_round") else "Keeper")
+                                if d.get("is_keeper") else d["pick_no"],
+                        "Player": d["player"],
+                        "Team": d.get("team", "Opponent"),
+                        "🗑️ Remove": False,
+                    }
+                    for d in tracker.drafted.values()
+                ]
+                log_df = pd.DataFrame(log_rows).sort_values("Player").reset_index(drop=True)
+                team_options = sorted(
+                    {tracker.my_team_name, "Opponent"} | {d.get("team", "Opponent") for d in tracker.drafted.values()}
+                )
+                edited_log = st.data_editor(
+                    log_df,
+                    hide_index=True,
+                    width="stretch",
+                    disabled=["Pick", "Player"],
+                    column_config={
+                        "Team": st.column_config.SelectboxColumn(options=team_options),
+                        "🗑️ Remove": st.column_config.CheckboxColumn(help="Check, then click Apply Changes below"),
+                    },
+                    key=f"draft_log_editor_{st.session_state.board_key_counter}",
+                )
+                if st.button("Apply Changes", width="stretch"):
+                    changed = False
+                    for i, row in edited_log.iterrows():
+                        if row["🗑️ Remove"]:
+                            st.toast(tracker.remove_pick(row["Player"]), icon="🗑️")
+                            changed = True
+                        elif row["Team"] != log_df.iloc[i]["Team"]:
+                            st.toast(tracker.reassign_pick(row["Player"], row["Team"]), icon="✏️")
+                            changed = True
+                    if changed:
+                        st.session_state.board_key_counter += 1
+                        st.rerun()
+                    else:
+                        st.caption("No changes to apply.")
 
     with undo_col:
         if st.button("↩️ Undo Last Pick"):
@@ -295,9 +403,25 @@ with st.container(border=True):
             st.session_state.board_key_counter += 1
             st.rerun()
 
+    with pick_status_col:
+        progress = tracker.draft_progress()
+        if not progress:
+            st.caption("⚠️ Add DRAFT_ORDER/ROUNDS to league_config.txt to enable pick tracking.")
+        elif progress["next"] is None:
+            st.metric("Draft", "Complete ✅", f"{progress['live_picks_made']} live picks made")
+        else:
+            nxt = progress["next"]
+            you = " 🎯 YOU" if nxt["team"] == tracker.my_team_name else nxt["team"]
+            st.metric(
+                f"Round {nxt['round']} · Pick {nxt['pick_in_round']}",
+                f"Overall #{nxt['overall_pick']}",
+                you,
+                delta_color="off",
+            )
+
     st.subheader("Available Players")
 
-    avail_df = filter_out_keepers(tracker.available_df(), st.session_state.keeper_names).head(tracker.top_n).copy()
+    avail_df = tracker.available_df().head(tracker.top_n).copy()
 
     my_col = f"✅ {tracker.my_team_name}"
     opp_col = "✅ Opponent"
@@ -335,11 +459,11 @@ with st.container(border=True):
         st.session_state.board_key_counter += 1
         st.rerun()
 
-    val_col, best_col, roster_col = st.columns(3)
+    val_col, best_col, cliffs_col = st.columns(3)
 
     with val_col:
         st.subheader("📈 Best Value")
-        value_df = get_best_value_picks(tracker, st.session_state.adp_lookup, st.session_state.keeper_names, top_n=5)
+        value_df = get_best_value_picks(tracker, st.session_state.adp_lookup, top_n=5)
         if value_df.empty:
             st.caption("No standout value picks yet.")
         else:
@@ -347,33 +471,23 @@ with st.container(border=True):
 
     with best_col:
         st.subheader("⭐ Best Available")
-        best_df = get_best_available(tracker, st.session_state.keeper_names, top_n=5)
+        best_df = get_best_available(tracker, top_n=5)
         if best_df.empty:
             st.caption("No players loaded.")
         else:
             st.dataframe(best_df, hide_index=True, width="content")
 
-    with roster_col:
-        st.subheader("🧢 My Roster")
-        my_roster_df = tracker.roster_df()
-        if my_roster_df.empty:
-            st.caption("No players drafted to your team yet.")
+    with cliffs_col:
+        st.subheader("⚠️ Tier Cliffs")
+        scarcity_df = tracker.tier_scarcity()
+        if scarcity_df.empty:
+            st.caption("No tier data available.")
         else:
-            st.dataframe(my_roster_df, hide_index=True, width="content")
-            counts = tracker.roster_position_counts()
-            if counts:
-                st.caption("Positions: " + ", ".join(f"{pos} {n}" for pos, n in counts.items()))
-
-            if "Bye" not in tracker.df.columns:
-                st.caption("⚠️ No 'Bye' column found in your rankings CSV — check the exact column header name.")
+            scarce_only = scarcity_df[scarcity_df["Scarce"]]
+            if scarce_only.empty:
+                st.caption("No immediate tier cliffs.")
             else:
-                bye_collisions = tracker.bye_week_collisions()
-                if bye_collisions:
-                    st.warning(
-                        "Bye week collision: " + ", ".join(f"Week {wk} ({n} players)" for wk, n in bye_collisions.items())
-                    )
-                else:
-                    st.caption("No bye week collisions yet (3+ players needed on the same bye to flag).")
+                st.dataframe(scarce_only.drop(columns=["Scarce"]), hide_index=True, width="content")
 
     with st.popover("📊 Draft Trends: Positions by Round", width="stretch"):
         trend_df = build_round_position_chart_data(tracker, NUM_TEAMS)
@@ -382,39 +496,80 @@ with st.container(border=True):
         else:
             st.bar_chart(trend_df)
 
-# --- Bottom row: chat on the left, tier-cliff info on the right ---
+# --- Bottom row: chat on the left, roster info on the right ---
 col_chat, col_side = st.columns([2, 1])
 
 with col_side:
-    st.subheader("⚠️ Tier Cliffs")
-    scarcity_df = tracker.tier_scarcity()
-    if scarcity_df.empty:
-        st.caption("No tier data available.")
+    st.subheader("🧢 My Roster")
+    my_roster_df = tracker.roster_df()
+    if my_roster_df.empty:
+        st.caption("No players drafted to your team yet.")
     else:
-        scarce_only = scarcity_df[scarcity_df["Scarce"]]
-        if scarce_only.empty:
-            st.caption("No immediate tier cliffs.")
+        st.dataframe(my_roster_df, hide_index=True, width="stretch")
+        counts = tracker.roster_position_counts()
+        if counts:
+            st.caption("Positions: " + ", ".join(f"{pos} {n}" for pos, n in counts.items()))
+
+        if "Bye" not in tracker.df.columns:
+            st.caption("⚠️ No 'Bye' column found in your rankings CSV — check the exact column header name.")
         else:
-            st.dataframe(scarce_only.drop(columns=["Scarce"]), hide_index=True, width="stretch")
+            bye_collisions = tracker.bye_week_collisions()
+            if bye_collisions:
+                st.warning(
+                    "Bye week collision: " + ", ".join(f"Week {wk} ({n} players)" for wk, n in bye_collisions.items())
+                )
+            else:
+                st.caption("No bye week collisions yet (3+ players needed on the same bye to flag).")
+
+    if tracker.drafted:
+        st.download_button(
+            "⬇️ Export Draft Log (CSV)",
+            data=build_draft_log_df(tracker).to_csv(index=False),
+            file_name="draft_log.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
 
 with col_chat:
     st.subheader("Chat")
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-            for name in msg.get("attachments", []):
-                st.caption(f"📎 {name}")
 
+    # --- Quick prompts + injury/news toggle: compact, bordered, sits above the
+    # input so it's always visible without disturbing any other component's layout. ---
+    with st.container(border=True):
+        st.session_state.injury_check_enabled = st.toggle(
+            "🩹 Injury/News Check",
+            value=st.session_state.injury_check_enabled,
+            help=(
+                "When on, the assistant searches for each recommended player's latest "
+                "injury status and notable news before responding. Minor stuff "
+                "(tightness, questionable, rest day) is noted but won't count against "
+                "a recommendation; major stuff (tear, surgery, IR) is flagged clearly. "
+                "Adds a bit of latency per message since it triggers a live search."
+            ),
+        )
+        st.caption("Quick Prompts")
+        qp_cols = st.columns(len(QUICK_PROMPTS))
+        quick_prompt_text = None
+        for col, (label, prompt_text) in zip(qp_cols, QUICK_PROMPTS.items()):
+            if col.button(label, use_container_width=True, help=prompt_text, key=f"quick_{label}"):
+                quick_prompt_text = prompt_text
+
+    # --- Text input, always rendered here at the top of the column ---
     chat_submission = st.chat_input(
         "Ask about matchups, tiers, who to target next... (attach files with the + icon)",
         accept_file="multiple",
-        file_type=["png", "jpg", "jpeg", "pdf", "txt", "csv", "md", "xlsx","docx"],
+        file_type=["png", "jpg", "jpeg", "pdf", "txt", "csv", "md", "xlsx", "docx"],
     )
 
-    if chat_submission:
+    user_input, uploaded_files, process_turn = None, [], False
+    if quick_prompt_text:
+        user_input, uploaded_files, process_turn = quick_prompt_text, [], True
+    elif chat_submission:
         user_input = chat_submission.text or ""
         uploaded_files = chat_submission.files or []
+        process_turn = True
 
+    if process_turn:
         doc_files = [f for f in uploaded_files if f.name.rsplit(".", 1)[-1].lower() in DOC_EXTENSIONS]
         image_files = [f for f in uploaded_files if f.name.rsplit(".", 1)[-1].lower() in IMAGE_EXTENSIONS]
         attachment_names = [f.name for f in uploaded_files]
@@ -433,7 +588,19 @@ with col_chat:
             with st.spinner(f"Saving {len(doc_files)} file(s) to permanent context and rebuilding..."):
                 for f in doc_files:
                     save_doc_attachment(f, CONTEXT_FOLDER)
-                st.session_state.keeper_names = extract_keeper_names(CONTEXT_FOLDER, tracker)
+                # If a fresh league_config.txt came in, pick up any new/updated keepers.
+                # register_keepers() skips anyone already in tracker.drafted, so this is
+                # safe to re-run — it only adds keepers that weren't there before.
+                if any(f.name == "league_config.txt" for f in doc_files):
+                    refreshed_config = parse_league_config(os.path.join(CONTEXT_FOLDER, "league_config.txt"))
+                    new_warnings = tracker.register_keepers(
+                        refreshed_config["keepers"], tracker.my_team_name
+                    )
+                    st.session_state.keeper_warnings = new_warnings
+                    if refreshed_config["draft_order"] and refreshed_config["num_rounds"]:
+                        tracker.configure_pick_sequence(
+                            refreshed_config["draft_order"], refreshed_config["num_rounds"]
+                        )
                 st.session_state.system_instructions, st.session_state.chat = rebuild_context_and_chat(
                     st.session_state.client, tracker, st.session_state.chat
                 )
@@ -449,17 +616,39 @@ with col_chat:
             st.session_state.turns_since_reset = 0
 
         # --- Image attachments: sent as actual image data alongside this turn's text ---
-        message_parts = [build_filtered_turn_message(tracker, user_input, st.session_state.keeper_names)]
+        message_parts = [
+            build_turn_message_ui(
+                tracker,
+                user_input,
+                injury_check=st.session_state.injury_check_enabled,
+            )
+        ]
         message_parts.extend(build_image_part(f) for f in image_files)
 
         with st.chat_message("assistant"):
             placeholder = st.empty()
             full_text = ""
-            response_stream = st.session_state.chat.send_message_stream(message_parts)
-            for chunk in response_stream:
-                if chunk.text:
-                    full_text += chunk.text
-                    placeholder.markdown(full_text)
+            spinner_label = (
+                "Searching for injury/news updates and thinking..."
+                if st.session_state.injury_check_enabled
+                else "Thinking..."
+            )
+            with st.spinner(spinner_label):
+                response_stream = st.session_state.chat.send_message_stream(message_parts)
+                for chunk in response_stream:
+                    if chunk.text:
+                        full_text += chunk.text
+                        placeholder.markdown(full_text)
 
         st.session_state.messages.append({"role": "assistant", "content": full_text})
         st.session_state.turns_since_reset += 1
+
+    # --- Older history, newest-first, below the input/live turn above. This keeps
+    # the input pinned at a consistent spot instead of drifting between responses
+    # the way it did when history rendered above a bottom-anchored input. ---
+    history_to_show = st.session_state.messages[:-2] if process_turn else st.session_state.messages
+    for msg in reversed(history_to_show):
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            for name in msg.get("attachments", []):
+                st.caption(f"📎 {name}")

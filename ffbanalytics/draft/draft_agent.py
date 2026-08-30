@@ -4,6 +4,7 @@ import re
 import difflib
 import pandas as pd
 from pypdf import PdfReader
+from striprtf.striprtf import rtf_to_text
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
@@ -25,8 +26,9 @@ class DraftTracker:
         self.df = self._load_csv(csv_filepath)
         self.top_n = top_n
         self.my_team_name = my_team_name
-        self.drafted = {}  # normalized_name -> {"player": str, "pick_no": int, "team": str}
+        self.drafted = {}  # normalized_name -> {"player": str, "pick_no": int, "team": str, ...}
         self.pick_counter = 0
+        self._keeper_seq = 0  # counts down (0, -1, -2, ...) so keepers always sort before live pick #1
 
     def _load_csv(self, csv_filepath: str) -> pd.DataFrame:
         if not os.path.exists(csv_filepath):
@@ -34,7 +36,15 @@ class DraftTracker:
             return pd.DataFrame(columns=self.REQUIRED_COLS)
         df = pd.read_csv(csv_filepath)
         available_cols = [c for c in self.REQUIRED_COLS if c in df.columns]
-        return df[available_cols].reset_index(drop=True)
+        df = df[available_cols].reset_index(drop=True)
+        if "Bye" in df.columns:
+            # Coerce to numeric (NaN for anything unparseable/missing) instead of leaving
+            # it as a raw string/mixed-type column — bye_week_collisions()'s pd.notna()
+            # check and value_counts() grouping both depend on a clean numeric dtype.
+            # Deliberately NOT filling NaN with 0: a missing bye should stay "unknown",
+            # not silently become a fake "Week 0" that gets counted alongside real byes.
+            df["Bye"] = pd.to_numeric(df["Bye"], errors="coerce")
+        return df
 
     @staticmethod
     def _normalize(name: str) -> str:
@@ -60,6 +70,57 @@ class DraftTracker:
             return norm_pool[matches[0]]
         return None
 
+    def configure_pick_sequence(self, draft_order: list, num_rounds: int):
+        """Precompute the full-draft snake sequence and derive which slots are pre-filled
+        by keepers from self.drafted (call this AFTER register_keepers()). Safe to call
+        again later (e.g. after a league_config.txt re-upload adds/changes keepers) — it
+        just rebuilds from scratch each time.
+
+        Once configured, draft_player() attaches accurate round/overall-pick numbers to
+        every live pick, draft_progress() can report what's on the clock, and
+        true_overall_pick_count() gives an ADP-comparable pick count that isn't undercounted
+        by keeper-forfeited slots. If draft_order/num_rounds aren't available (e.g. not yet
+        added to league_config.txt), this is simply never called and everything downstream
+        falls back to the old pick_counter-only behavior.
+        """
+        keeper_slots = {
+            (d["team"], d["keeper_round"])
+            for d in self.drafted.values()
+            if d.get("is_keeper") and d.get("keeper_round")
+        }
+        self.draft_order = draft_order
+        self.num_rounds = num_rounds
+        self._pick_sequence = build_pick_sequence(draft_order, num_rounds, keeper_slots)
+        self._live_queue = [s for s in self._pick_sequence if not s["is_keeper"]]
+
+    def draft_progress(self) -> dict:
+        """Snapshot for an always-visible 'what round/pick are we on' UI element. Returns {}
+        if configure_pick_sequence() hasn't been called. 'next' is the live slot about to be
+        picked (None if the draft is fully complete); 'last' is the live slot most recently
+        filled (None if no live picks yet)."""
+        if not getattr(self, "_live_queue", None):
+            return {}
+        idx = self.pick_counter  # live picks made so far == index of the next unfilled slot
+        return {
+            "next": self._live_queue[idx] if idx < len(self._live_queue) else None,
+            "last": self._live_queue[idx - 1] if idx >= 1 else None,
+            "live_picks_made": idx,
+            "live_picks_total": len(self._live_queue),
+            "num_rounds": self.num_rounds,
+        }
+
+    def true_overall_pick_count(self) -> int:
+        """True number of draft slots (keeper + live) resolved so far — for ADP-based value
+        comparisons. Corrects the plain pick_counter's undercount once keeper-forfeited slots
+        start passing (a naive live-only count no longer matches 'how far into the draft we
+        really are'). Falls back to pick_counter if the sequence isn't configured."""
+        if not getattr(self, "_live_queue", None):
+            return self.pick_counter
+        idx = self.pick_counter
+        if idx < len(self._live_queue):
+            return self._live_queue[idx]["overall_pick"] - 1
+        return len(self._pick_sequence)
+
     def draft_player(self, query: str, team: str = "Opponent") -> str:
         """team is the FANTASY team that made the pick ("My Team" / self.my_team_name,
         or "Opponent" as a catch-all) — not to be confused with the player's NFL team
@@ -70,18 +131,111 @@ class DraftTracker:
         norm = self._normalize(player)
         if norm in self.drafted:
             return f"{player} is already marked as drafted."
+        # Look up this pick's true slot BEFORE incrementing pick_counter, since pick_counter
+        # doubles as the index of the next unfilled slot in the live queue.
+        slot = None
+        live_queue = getattr(self, "_live_queue", None)
+        if live_queue and self.pick_counter < len(live_queue):
+            slot = live_queue[self.pick_counter]
         self.pick_counter += 1
-        self.drafted[norm] = {"player": player, "pick_no": self.pick_counter, "team": team}
+        entry = {"player": player, "pick_no": self.pick_counter, "team": team}
+        if slot:
+            entry["round"] = slot["round"]
+            entry["overall_pick"] = slot["overall_pick"]
+        self.drafted[norm] = entry
         label = "your team" if team == self.my_team_name else team
-        return f"Pick #{self.pick_counter}: {player} drafted by {label}."
+        slot_note = f" (Round {slot['round']}, Overall #{slot['overall_pick']})" if slot else ""
+        return f"Pick #{self.pick_counter}: {player} drafted by {label}.{slot_note}"
 
     def undo_last(self) -> str:
         if not self.drafted:
             return "No picks to undo."
         last_norm = max(self.drafted, key=lambda k: self.drafted[k]["pick_no"])
-        player = self.drafted.pop(last_norm)["player"]
-        self.pick_counter -= 1
-        return f"Undid pick: {player} is available again."
+        entry = self.drafted.pop(last_norm)
+        # Only decrement pick_counter for a real live pick — keepers use negative
+        # pick_no and were never counted in pick_counter to begin with.
+        if not entry.get("is_keeper"):
+            self.pick_counter -= 1
+        return f"Undid pick: {entry['player']} is available again."
+
+    def _match_drafted(self, query: str):
+        """Fuzzy-match a query against currently-drafted players only (not the full
+        rankings pool) — used by remove_pick/reassign_pick, which by definition need
+        to target something already on someone's roster."""
+        if not self.drafted:
+            return None
+        norm_query = self._normalize(query)
+        pool = {norm: d["player"] for norm, d in self.drafted.items()}
+        if norm_query in pool:
+            return norm_query
+        substr_hits = [norm for norm, name in pool.items() if norm_query in norm]
+        if len(substr_hits) == 1:
+            return substr_hits[0]
+        matches = difflib.get_close_matches(norm_query, pool.keys(), n=1, cutoff=0.6)
+        return matches[0] if matches else None
+
+    def remove_pick(self, query: str) -> str:
+        """Remove any single pick from the log, not just the most recent one — for
+        correcting a mistake that wasn't caught until several picks later. Leaves a
+        gap in pick_no rather than renumbering everything after it; pick_no is just
+        a chronological log id, not required to be contiguous."""
+        norm = self._match_drafted(query)
+        if not norm:
+            return f"Couldn't find a drafted player matching '{query}'."
+        entry = self.drafted.pop(norm)
+        tag = " (was a keeper)" if entry.get("is_keeper") else ""
+        return f"Removed {entry['player']}{tag} — available again."
+
+    def reassign_pick(self, query: str, new_team: str) -> str:
+        """Fix a pick logged to the wrong team without a remove+redraft round trip
+        (which would also lose its original pick_no / draft-order position)."""
+        norm = self._match_drafted(query)
+        if not norm:
+            return f"Couldn't find a drafted player matching '{query}'."
+        old_team = self.drafted[norm].get("team", "Opponent")
+        self.drafted[norm]["team"] = new_team
+        return f"Reassigned {self.drafted[norm]['player']} from {old_team} to {new_team}."
+
+    def register_keepers(self, keepers: list, my_team_name: str) -> list:
+        """Register pre-draft keepers directly into self.drafted, same data structure
+        as a live pick, so they automatically show up everywhere drafted players
+        already do: excluded from available_df(), included in roster_df()/
+        roster_position_counts()/bye_week_collisions() for whichever team holds them.
+
+        keepers: list of {"team", "player", "position", "nfl_team", "round"} dicts,
+        as produced by parse_league_config(). Uses negative pick_no values (via
+        self._keeper_seq) so keepers always sort before real pick #1 in
+        drafted_summary()/roster_df(), and so undo_last() never targets a keeper
+        while any live pick exists.
+
+        Returns a list of warning strings for any keeper name that couldn't be
+        matched to the rankings CSV (e.g. a spelling mismatch) — surface these to
+        the user, since a silently-unmatched keeper would otherwise still show up
+        as "available" on the board.
+        """
+        warnings = []
+        for k in keepers:
+            resolved = self.find_player(k["player"])
+            if not resolved:
+                warnings.append(
+                    f"Keeper '{k['player']}' ({k['team']}) not found in rankings CSV — check spelling/name match."
+                )
+                continue
+            norm = self._normalize(resolved)
+            if norm in self.drafted:
+                continue  # already registered (e.g. Streamlit rerun) — don't double-count
+            team_label = (
+                my_team_name if k["team"].strip().lower() == my_team_name.strip().lower() else k["team"]
+            )
+            self._keeper_seq -= 1
+            self.drafted[norm] = {
+                "player": resolved,
+                "pick_no": self._keeper_seq,
+                "team": team_label,
+                "is_keeper": True,
+                "keeper_round": k.get("round"),
+            }
+        return warnings
 
     def available_df(self) -> pd.DataFrame:
         if self.df.empty:
@@ -101,7 +255,14 @@ class DraftTracker:
         if not self.drafted:
             return "No players drafted yet."
         rows = sorted(self.drafted.values(), key=lambda d: d["pick_no"])
-        return "\n".join(f"{d['pick_no']}. {d['player']} ({d.get('team', 'Opponent')})" for d in rows)
+        lines = []
+        for d in rows:
+            if d.get("is_keeper"):
+                round_note = f", Rd {d['keeper_round']} cost" if d.get("keeper_round") else ""
+                lines.append(f"(Keeper) {d['player']} ({d.get('team', 'Opponent')}{round_note})")
+            else:
+                lines.append(f"{d['pick_no']}. {d['player']} ({d.get('team', 'Opponent')})")
+        return "\n".join(lines)
 
     def _roster_rows(self, team: str = None) -> list:
         team = team or self.my_team_name
@@ -119,7 +280,11 @@ class DraftTracker:
         rows = []
         for d in picks:
             match = self.df[self.df["Player"] == d["player"]]
-            row = {"Pick": d["pick_no"], "Player": d["player"]}
+            if d.get("is_keeper"):
+                pick_label = f"Keeper (Rd {d['keeper_round']})" if d.get("keeper_round") else "Keeper"
+            else:
+                pick_label = d["pick_no"]
+            row = {"Pick": pick_label, "Player": d["player"]}
             for col in ["Position", "Team", "Tier", "Bye"]:
                 if col in match.columns and not match.empty:
                     row[col] = match[col].iloc[0]
@@ -219,6 +384,13 @@ def load_context_folder(folder_path: str, max_chars: int = 1000000) -> str:
                 if not content.strip():
                     print(f"Warning: no extractable text in {fname} (likely a scanned/image PDF); skipping.")
                     continue
+            elif ext == ".rtf":
+                with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                    raw = f.read()
+                content = rtf_to_text(raw)
+                if not content.strip():
+                    print(f"Warning: no extractable text in {fname} after RTF parsing; skipping.")
+                    continue
             else:
                 with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
@@ -239,6 +411,122 @@ def load_context_folder(folder_path: str, max_chars: int = 1000000) -> str:
     if sections:
         print(f"Loaded {len(sections)} context file(s) from '{folder_path}' ({total_chars} chars).")
     return "\n\n".join(sections)
+
+
+_LEAGUE_SETTING_RE = re.compile(r"^([A-Z_]+):\s*(.+)$")
+_KEEPER_LINE_RE = re.compile(
+    r"^-\s*(?P<player>[^,]+),\s*(?P<pos>[^,]+),\s*(?P<nfl>[^\u2014-]+?)\s*[\u2014-]+\s*"
+    r"Keeper cost:\s*Rd\s*(?P<round>\d+)",
+    re.IGNORECASE,
+)
+
+
+def parse_league_config(filepath: str) -> dict:
+    """Parse a league_config.txt: a small settings header (KEY: value lines) followed
+    by the same team-header / '- Player, POS, TEAM — Keeper cost: Rd N' keeper blocks
+    used in the ESPN keepers screenshot export. Deterministic, regex-based — this is
+    the actual source of truth for keeper team attribution and round cost, separate
+    from the freeform prose that load_context_folder() feeds the model for general
+    context. Missing file or missing fields degrade gracefully (None / empty list)
+    rather than raising, since a lot of this is optional today and only fully used
+    once the pick-counting work lands.
+    """
+    result = {
+        "my_team_name": None,
+        "num_teams": None,
+        "draft_style": None,
+        "my_draft_position": None,
+        "num_rounds": None,
+        "draft_order": None,  # list of team names in Round-1 pick order (position 1..NUM_TEAMS)
+        "keepers": [],  # list of {"team", "player", "position", "nfl_team", "round"}
+    }
+    if not os.path.exists(filepath):
+        return result
+
+    settings = {}
+    keepers = []
+    current_team = None
+    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or line.startswith("(") or line.startswith("###"):
+                continue
+            m_keeper = _KEEPER_LINE_RE.match(line)
+            if m_keeper:
+                if current_team is None:
+                    print(f"Warning: keeper line found before any team header, skipping: {line}")
+                    continue
+                keepers.append({
+                    "team": current_team,
+                    "player": m_keeper.group("player").strip(),
+                    "position": m_keeper.group("pos").strip(),
+                    "nfl_team": m_keeper.group("nfl").strip(),
+                    "round": int(m_keeper.group("round")),
+                })
+                continue
+            if line.startswith("-"):
+                print(f"Warning: couldn't parse keeper line, skipping: {line}")
+                continue
+            m_setting = _LEAGUE_SETTING_RE.match(line)
+            if m_setting:
+                settings[m_setting.group(1)] = m_setting.group(2).strip()
+                continue
+            # Anything else non-blank, non-"-", non-"KEY: value" is treated as a team header
+            current_team = line
+
+    result["my_team_name"] = settings.get("MY_TEAM_NAME") or None
+    result["draft_style"] = settings.get("DRAFT_STYLE") or None
+    if "NUM_TEAMS" in settings:
+        try:
+            result["num_teams"] = int(settings["NUM_TEAMS"])
+        except ValueError:
+            pass
+    if "MY_DRAFT_POSITION" in settings:
+        try:
+            result["my_draft_position"] = int(settings["MY_DRAFT_POSITION"])
+        except ValueError:
+            pass
+    if "ROUNDS" in settings:
+        try:
+            result["num_rounds"] = int(settings["ROUNDS"])
+        except ValueError:
+            pass
+    if "DRAFT_ORDER" in settings:
+        # Comma-separated Round-1 team order, position 1..NUM_TEAMS. Team names must match
+        # the keeper-block headers above exactly (case-insensitive) so keeper slots can be
+        # placed correctly in build_pick_sequence().
+        result["draft_order"] = [t.strip() for t in settings["DRAFT_ORDER"].split(",") if t.strip()]
+    result["keepers"] = keepers
+    return result
+
+
+def build_pick_sequence(draft_order: list, num_rounds: int, keeper_slots: set) -> list:
+    """Precompute every draft slot for the whole draft, in true overall order, standard snake
+    (Round 1 order, then reversed, alternating). Each slot is tagged with which team picks
+    there and whether that slot is pre-filled by a keeper.
+
+    draft_order: list of team names in Round-1 order (position 1..N).
+    keeper_slots: set of (team_name, round_number) tuples — a keeper occupies that team's
+    slot in that specific round, so it's never a live pick.
+
+    This is what makes pick numbering match Yahoo exactly even when keeper-forfeited slots
+    are silently skipped in the live draft: a live pick's true round/overall-pick number is
+    just wherever it falls in this precomputed sequence, not a naive running count of clicks.
+    """
+    sequence = []
+    overall = 0
+    for r in range(1, num_rounds + 1):
+        order = draft_order if r % 2 == 1 else list(reversed(draft_order))
+        for pick_in_round, team in enumerate(order, start=1):
+            overall += 1
+            sequence.append({
+                "round": r,
+                "pick_in_round": pick_in_round,
+                "overall_pick": overall,
+                "team": team,
+                "is_keeper": (team, r) in keeper_slots,
+            })
+    return sequence
 
 
 def build_system_instructions(extra_context: str = "") -> str:
@@ -312,10 +600,13 @@ HELP_TEXT = """Commands:
   /draft <name>   Mark a player as drafted BY AN OPPONENT (fuzzy name matching supported)
   /mydraft <name> Mark a player as drafted BY YOUR TEAM
   /undo           Undo the most recent draft pick (either team)
+  /remove <n>     Remove any drafted player from the log (not just the most recent)
+  /reassign <n> | <team>   Fix a pick logged to the wrong team, e.g. /reassign Bijan | My Team
   /board          Show the current top available players
   /drafted        List all players drafted so far, with which team took each
   /roster         Show your roster, position counts, and any bye-week collisions
   /scarcity       Show positional scarcity / tier-cliff warnings
+  /pick           Show what round/pick we're on and who's on the clock
   /help           Show this help message
   exit | quit     End the session
 Anything else is sent to the assistant as a normal question."""
@@ -370,9 +661,23 @@ Continue assisting with the draft using this context. Acknowledge briefly, then 
 
 def main():
     csv_path = "FantasyPros_2026_Overall_ADP_Rankings.csv"
-    tracker = DraftTracker(csv_path, top_n=150)
 
-    context_folder = "context_docs"
+    # context_folder = "context_docs_espn"
+    context_folder = "context_docs_yahoo"
+    league_config = parse_league_config(os.path.join(context_folder, "league_config.txt"))
+    tracker = DraftTracker(csv_path, top_n=150, my_team_name=league_config["my_team_name"] or "My Team")
+
+    if league_config["keepers"]:
+        warnings = tracker.register_keepers(league_config["keepers"], tracker.my_team_name)
+        print(f"Registered {len(league_config['keepers']) - len(warnings)} keeper(s) from league_config.txt.")
+        for w in warnings:
+            print(f"Warning: {w}")
+
+    if league_config["draft_order"] and league_config["num_rounds"]:
+        tracker.configure_pick_sequence(league_config["draft_order"], league_config["num_rounds"])
+    else:
+        print("Note: DRAFT_ORDER/ROUNDS not set in league_config.txt — pick numbering won't account for keeper-skipped slots.")
+
     extra_context = load_context_folder(context_folder)
 
     system_instructions = build_system_instructions(extra_context)
@@ -415,6 +720,18 @@ def main():
             if user_input.lower() == "/undo":
                 print(tracker.undo_last())
                 continue
+            if user_input.lower().startswith("/remove "):
+                print(tracker.remove_pick(user_input[len("/remove "):].strip()))
+                continue
+            if user_input.lower().startswith("/reassign "):
+                # Usage: /reassign <player> | <team>
+                payload = user_input[len("/reassign "):].strip()
+                if "|" not in payload:
+                    print("Usage: /reassign <player> | <team>")
+                    continue
+                player_part, team_part = payload.split("|", 1)
+                print(tracker.reassign_pick(player_part.strip(), team_part.strip()))
+                continue
             if user_input.lower() == "/board":
                 print(tracker.available_markdown(top_n=20))
                 continue
@@ -434,6 +751,17 @@ def main():
             if user_input.lower() == "/scarcity":
                 scarcity = tracker.tier_scarcity()
                 print(scarcity.to_markdown(index=False) if not scarcity.empty else "No tier data available.")
+                continue
+            if user_input.lower() == "/pick":
+                progress = tracker.draft_progress()
+                if not progress:
+                    print("Pick sequence not configured — add DRAFT_ORDER and ROUNDS to league_config.txt.")
+                elif progress["next"] is None:
+                    print(f"Draft complete — {progress['live_picks_made']} live picks made.")
+                else:
+                    nxt = progress["next"]
+                    you = " (YOU)" if nxt["team"] == tracker.my_team_name else ""
+                    print(f"On the clock: Round {nxt['round']}, Pick {nxt['pick_in_round']} (Overall #{nxt['overall_pick']}) — {nxt['team']}{you}")
                 continue
             if user_input.lower() == "/help":
                 print(HELP_TEXT)
