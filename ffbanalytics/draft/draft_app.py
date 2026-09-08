@@ -11,10 +11,12 @@ Run with:
 """
 
 import os
+import time
 from dotenv import load_dotenv
 import pandas as pd
 import streamlit as st
 from google import genai
+from google.genai import errors as genai_errors
 
 from draft_agent import (
     DraftTracker,
@@ -102,6 +104,54 @@ st.markdown(
 if not os.getenv("GEMINI_API_KEY"):
     st.error("GEMINI_API_KEY not found in environment variables. Check your .env file.")
     st.stop()
+
+
+# --- Retry helpers: Gemini occasionally returns a transient 503 ("high demand")
+# or 429 (rate limit) that clears up within seconds. Without retrying, one bad
+# blip crashes the whole session — the worst possible time for that is mid-draft.
+# These wrap the two places draft_app.py calls the model; draft_agent.py itself
+# is untouched. ---
+RETRYABLE_CODES = (429, 500, 502, 503, 504)
+
+
+def _is_transient_genai_error(e) -> bool:
+    return getattr(e, "code", None) in RETRYABLE_CODES
+
+
+def call_with_retry(fn, *args, max_attempts=4, base_delay=2, on_retry=None, **kwargs):
+    """Call a one-shot Gemini function (e.g. chat.send_message) with exponential
+    backoff on transient server errors. Re-raises immediately on non-transient
+    errors (bad request, auth, etc.) or once attempts are exhausted."""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fn(*args, **kwargs)
+        except (genai_errors.ServerError, genai_errors.ClientError) as e:
+            if not _is_transient_genai_error(e) or attempt == max_attempts:
+                raise
+            delay = base_delay * (2 ** (attempt - 1))
+            if on_retry:
+                on_retry(attempt, max_attempts, delay)
+            time.sleep(delay)
+
+
+def stream_with_retry(send_fn, *args, max_attempts=4, base_delay=2, on_retry=None, on_reset=None, **kwargs):
+    """Same idea for chat.send_message_stream. A stream can't be resumed after
+    an error mid-generation, so on_reset() lets the caller clear any partial
+    text already shown before the whole response is regenerated from scratch."""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            for chunk in send_fn(*args, **kwargs):
+                yield chunk
+            return
+        except (genai_errors.ServerError, genai_errors.ClientError) as e:
+            if not _is_transient_genai_error(e) or attempt == max_attempts:
+                raise
+            delay = base_delay * (2 ** (attempt - 1))
+            if on_reset:
+                on_reset()
+            if on_retry:
+                on_retry(attempt, max_attempts, delay)
+            time.sleep(delay)
 
 
 def build_round_position_chart_data(tracker: DraftTracker, num_teams: int) -> pd.DataFrame:
@@ -321,13 +371,24 @@ if "tracker" not in st.session_state:
     st.session_state.board_key_counter = 0  # bumped after each draft click to reset table selection
     st.session_state.injury_check_enabled = False  # toggle: search for latest injury/news on recommended players
 
-    init_response = st.session_state.chat.send_message(
-        build_turn_message_ui(
-            st.session_state.tracker,
-            "Confirm that you have loaded my rankings. List my top 3 overall players.",
+    try:
+        init_response = call_with_retry(
+            st.session_state.chat.send_message,
+            build_turn_message_ui(
+                st.session_state.tracker,
+                "Confirm that you have loaded my rankings. List my top 3 overall players.",
+            ),
+            on_retry=lambda attempt, total, delay: st.toast(
+                f"Gemini is overloaded (attempt {attempt}/{total}) — retrying in {delay}s...", icon="⏳"
+            ),
         )
-    )
-    st.session_state.messages.append({"role": "assistant", "content": init_response.text})
+        st.session_state.messages.append({"role": "assistant", "content": init_response.text})
+    except (genai_errors.ServerError, genai_errors.ClientError) as e:
+        st.error(
+            f"Gemini is unavailable after several retries ({e}). This is usually temporary — "
+            "refresh the page in a minute to try again."
+        )
+        st.stop()
 
 for w in st.session_state.get("keeper_warnings", []):
     st.warning(w)
@@ -627,21 +688,43 @@ with col_chat:
 
         with st.chat_message("assistant"):
             placeholder = st.empty()
-            full_text = ""
+            stream_state = {"text": ""}
+            stream_failed = False
             spinner_label = (
                 "Searching for injury/news updates and thinking..."
                 if st.session_state.injury_check_enabled
                 else "Thinking..."
             )
-            with st.spinner(spinner_label):
-                response_stream = st.session_state.chat.send_message_stream(message_parts)
-                for chunk in response_stream:
-                    if chunk.text:
-                        full_text += chunk.text
-                        placeholder.markdown(full_text)
 
+            def _on_stream_reset():
+                stream_state["text"] = ""
+                placeholder.empty()
+
+            with st.spinner(spinner_label):
+                try:
+                    for chunk in stream_with_retry(
+                        st.session_state.chat.send_message_stream,
+                        message_parts,
+                        on_retry=lambda attempt, total, delay: st.toast(
+                            f"Gemini is overloaded (attempt {attempt}/{total}) — retrying in {delay}s...",
+                            icon="⏳",
+                        ),
+                        on_reset=_on_stream_reset,
+                    ):
+                        if chunk.text:
+                            stream_state["text"] += chunk.text
+                            placeholder.markdown(stream_state["text"])
+                except (genai_errors.ServerError, genai_errors.ClientError) as e:
+                    stream_failed = True
+                    stream_state["text"] = (
+                        f"⚠️ Gemini is unavailable right now ({e}). Try sending your message again in a moment."
+                    )
+                    placeholder.markdown(stream_state["text"])
+
+        full_text = stream_state["text"]
         st.session_state.messages.append({"role": "assistant", "content": full_text})
-        st.session_state.turns_since_reset += 1
+        if not stream_failed:
+            st.session_state.turns_since_reset += 1
 
     # --- Older history, newest-first, below the input/live turn above. This keeps
     # the input pinned at a consistent spot instead of drifting between responses
