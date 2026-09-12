@@ -147,6 +147,47 @@ class DraftTracker:
         slot_note = f" (Round {slot['round']}, Overall #{slot['overall_pick']})" if slot else ""
         return f"Pick #{self.pick_counter}: {player} drafted by {label}.{slot_note}"
 
+    def draft_player_manual(self, name: str, position: str = "Unknown", team: str = "Opponent",
+                             nfl_team: str = None, tier=None) -> str:
+        """Log a pick for a player who ISN'T in the rankings CSV — e.g. a reach pick nobody
+        had ranked. Exists because draft_player() requires a find_player() match against
+        self.df; without this, an unranked pick simply couldn't be logged, which silently
+        desyncs pick_counter/_live_queue from the real draft (every slot after it reports
+        the wrong round/overall-pick number for the rest of the draft).
+
+        Mirrors draft_player()'s slot-assignment logic exactly (same pick_counter/live_queue
+        advance) so numbering stays correct, but stores position/nfl_team/tier directly on
+        the entry (is_manual=True) since there's no CSV row to join against later in
+        roster_df()/roster_position_counts().
+        """
+        name = name.strip()
+        if not name:
+            return "Player name can't be empty."
+        norm = self._normalize(name)
+        if norm in self.drafted:
+            return f"{self.drafted[norm]['player']} is already marked as drafted."
+        slot = None
+        live_queue = getattr(self, "_live_queue", None)
+        if live_queue and self.pick_counter < len(live_queue):
+            slot = live_queue[self.pick_counter]
+        self.pick_counter += 1
+        entry = {
+            "player": name,
+            "pick_no": self.pick_counter,
+            "team": team,
+            "is_manual": True,
+            "position": position or "Unknown",
+            "nfl_team": nfl_team,
+            "tier": tier,
+        }
+        if slot:
+            entry["round"] = slot["round"]
+            entry["overall_pick"] = slot["overall_pick"]
+        self.drafted[norm] = entry
+        label = "your team" if team == self.my_team_name else team
+        slot_note = f" (Round {slot['round']}, Overall #{slot['overall_pick']})" if slot else ""
+        return f"Pick #{self.pick_counter}: {name} (write-in, {position}) drafted by {label}.{slot_note}"
+
     def undo_last(self) -> str:
         if not self.drafted:
             return "No picks to undo."
@@ -261,7 +302,8 @@ class DraftTracker:
                 round_note = f", Rd {d['keeper_round']} cost" if d.get("keeper_round") else ""
                 lines.append(f"(Keeper) {d['player']} ({d.get('team', 'Opponent')}{round_note})")
             else:
-                lines.append(f"{d['pick_no']}. {d['player']} ({d.get('team', 'Opponent')})")
+                tag = " [write-in]" if d.get("is_manual") else ""
+                lines.append(f"{d['pick_no']}. {d['player']}{tag} ({d.get('team', 'Opponent')})")
         return "\n".join(lines)
 
     def _roster_rows(self, team: str = None) -> list:
@@ -288,20 +330,58 @@ class DraftTracker:
             for col in ["Position", "Team", "Tier", "Bye"]:
                 if col in match.columns and not match.empty:
                     row[col] = match[col].iloc[0]
+            if d.get("is_manual"):
+                # No CSV row to join against — use what was captured at write-in time instead.
+                row.setdefault("Position", d.get("position", "Unknown"))
+                if d.get("nfl_team"):
+                    row.setdefault("Team", d["nfl_team"])
+                if d.get("tier") is not None:
+                    row.setdefault("Tier", d["tier"])
             rows.append(row)
         return pd.DataFrame(rows)
 
     def roster_position_counts(self, team: str = None) -> dict:
-        """Position -> count of drafted players, for spotting positional gaps."""
+        """Position -> count of drafted players, for spotting positional gaps. Write-in
+        picks (no CSV row) count using the position captured at write-in time, so a
+        reach pick doesn't silently vanish from your positional totals."""
         picks = self._roster_rows(team)
-        if not picks or "Position" not in self.df.columns:
+        if not picks:
             return {}
         positions = []
         for d in picks:
+            if d.get("is_manual"):
+                positions.append(d.get("position") or "Unknown")
+                continue
+            if "Position" not in self.df.columns:
+                continue
             match = self.df[self.df["Player"] == d["player"]]
             if not match.empty:
                 positions.append(match["Position"].iloc[0])
         return dict(pd.Series(positions).value_counts()) if positions else {}
+
+    def roster_summary_by_position(self, team: str = None) -> str:
+        """'Position: Player, Player' breakdown of a roster, WITH NAMES — for direct
+        injection into the LLM prompt every turn. roster_position_counts() alone (just
+        numbers, e.g. "QB: 1") isn't enough context for the model to reliably answer
+        questions like "who's my QB" or reason about a specific player's bye week; the
+        model only otherwise "knows" a name from having seen it mentioned earlier in
+        chat history, which is exactly what a RESET_EVERY_N_TURNS recap can lose.
+        """
+        picks = self._roster_rows(team)
+        if not picks:
+            return "No players drafted to your team yet"
+        by_position = {}
+        for d in picks:
+            if d.get("is_manual") and d.get("position"):
+                position = d["position"]
+            else:
+                match = self.df[self.df["Player"] == d["player"]]
+                if not match.empty and "Position" in self.df.columns:
+                    position = match["Position"].iloc[0]
+                else:
+                    position = "Unknown"
+            by_position.setdefault(position, []).append(d["player"])
+        return "; ".join(f"{pos}: {', '.join(players)}" for pos, players in by_position.items())
 
     def bye_week_collisions(self, team: str = None, threshold: int = 3) -> dict:
         """Bye week -> count, for any week where you've stacked threshold+ players
@@ -563,8 +643,7 @@ def build_system_instructions(extra_context: str = "") -> str:
 def build_turn_message(tracker: DraftTracker, user_input: str) -> str:
     """Wrap the user's message with the current draft-board context, your roster
     composition, tier-scarcity signals, and bye-week collision warnings."""
-    position_counts = tracker.roster_position_counts()
-    roster_line = ", ".join(f"{pos}: {count}" for pos, count in position_counts.items()) or "No players drafted to your team yet"
+    roster_line = tracker.roster_summary_by_position()
 
     scarcity_df = tracker.tier_scarcity()
     if not scarcity_df.empty:
@@ -582,7 +661,7 @@ def build_turn_message(tracker: DraftTracker, user_input: str) -> str:
     return f"""### CURRENT AVAILABLE PLAYERS (top {tracker.top_n}, already excludes drafted players)
 {tracker.available_markdown()}
 
-### YOUR ROSTER SO FAR (by position)
+### YOUR ROSTER SO FAR (by position, with player names)
 {roster_line}
 
 ### POSITIONAL SCARCITY / TIER CLIFFS (available players only)

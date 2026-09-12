@@ -34,6 +34,33 @@ CSV_PATH = "FantasyPros_2026_Overall_ADP_Rankings.csv"
 # CONTEXT_FOLDER = "context_docs_espn"
 CONTEXT_FOLDER = "context_docs_yahoo"
 NUM_TEAMS = 12  # your league size — used to convert overall pick number into round number
+LIVE_NOTES_PATH = os.path.join(CONTEXT_FOLDER, "live_notes.txt")
+DEFAULT_AUTO_INSIGHT_INTERVAL = 5  # live picks between automatic check-ins (0/toggle-off disables)
+
+AUTO_INSIGHT_PROMPT_TEMPLATE = (
+    "Automatic check-in after live pick #{pick_no}: scan the full board, my roster, and "
+    "positional scarcity/tier cliffs, and flag anything I should know before my next pick — "
+    "a tier cliff approaching, a value gap opening up, or a positional run happening across "
+    "the league. Be brief, a few sentences."
+)
+
+
+def load_live_notes() -> str:
+    """Live notes persist to a plain text file inside CONTEXT_FOLDER so they survive an
+    app restart (and, as a bonus, get picked up like any other reference file next time
+    load_context_folder() runs at startup) — but during a running session they're injected
+    fresh into every turn's message (see build_turn_message_ui), not baked into the static
+    system instructions, so jotting a quick note mid-draft never requires a chat reset."""
+    if os.path.exists(LIVE_NOTES_PATH):
+        with open(LIVE_NOTES_PATH, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    return ""
+
+
+def save_live_notes(text: str):
+    os.makedirs(CONTEXT_FOLDER, exist_ok=True)
+    with open(LIVE_NOTES_PATH, "w", encoding="utf-8") as f:
+        f.write(text)
 
 # --- Quick prompt buttons: canned questions that reuse the exact same send path
 # as manually typed chat, so they go through normal context-loading and the
@@ -181,7 +208,8 @@ def build_round_position_chart_data(tracker: DraftTracker, num_teams: int) -> pd
     return pivot
 
 
-def build_turn_message_ui(tracker: DraftTracker, user_input: str, injury_check: bool = False) -> str:
+def build_turn_message_ui(tracker: DraftTracker, user_input: str, injury_check: bool = False,
+                           live_notes: str = "") -> str:
     """Same shape/purpose as draft_agent.build_turn_message (roster, scarcity, bye
     collisions). Keepers no longer need a separate filter pass here — register_keepers()
     puts them directly into tracker.drafted, so tracker.available_df() already excludes
@@ -189,12 +217,20 @@ def build_turn_message_ui(tracker: DraftTracker, user_input: str, injury_check: 
     draft_agent.py's own version stays the source of truth for the CLI's identical logic.
 
     injury_check=True appends INJURY_NEWS_INSTRUCTION so the assistant searches for
-    and reports the latest injury/news status on any player it recommends this turn."""
+    and reports the latest injury/news status on any player it recommends this turn.
+
+    live_notes, if non-empty, is appended as a block of commissioner/you-authored notes
+    (see the Live Notes text box) — freeform context you want considered on every turn
+    without having to re-type it or reset the chat session.
+    """
     avail = tracker.available_df().head(tracker.top_n)
     table_md = avail.to_markdown(index=False) if not avail.empty else "No players loaded."
 
-    position_counts = tracker.roster_position_counts()
-    roster_line = ", ".join(f"{pos}: {count}" for pos, count in position_counts.items()) or "No players drafted to your team yet"
+    # roster_summary_by_position() sends actual player names (e.g. "QB: Lamar Jackson"),
+    # not just counts (e.g. "QB: 1") — the model otherwise has no persistent, explicit
+    # record of WHO is on your roster, only what it happens to still recall from earlier
+    # in the chat history (which a RESET_EVERY_N_TURNS recap can lose).
+    roster_line = tracker.roster_summary_by_position()
 
     scarcity_df = tracker.tier_scarcity()
     if not scarcity_df.empty:
@@ -216,6 +252,10 @@ def build_turn_message_ui(tracker: DraftTracker, user_input: str, injury_check: 
     )
 
     injury_block = INJURY_NEWS_INSTRUCTION if injury_check else ""
+    notes_block = (
+        f"\n### YOUR LIVE NOTES (things you've flagged during this draft — weigh these heavily)\n{live_notes.strip()}\n"
+        if live_notes and live_notes.strip() else ""
+    )
 
     return f"""### CURRENT AVAILABLE PLAYERS (top {tracker.top_n}, already excludes drafted and keeper players)
 {table_md}
@@ -223,7 +263,7 @@ def build_turn_message_ui(tracker: DraftTracker, user_input: str, injury_check: 
 ### KEEPERS (excluded from the pool above — these are NOT available to draft, already held by their original owners)
 {keeper_line}
 
-### YOUR ROSTER SO FAR (by position)
+### YOUR ROSTER SO FAR (by position, with player names)
 {roster_line}
 
 ### POSITIONAL SCARCITY / TIER CLIFFS (available players only)
@@ -231,7 +271,7 @@ def build_turn_message_ui(tracker: DraftTracker, user_input: str, injury_check: 
 
 ### YOUR BYE WEEK COLLISIONS (3+ players sharing a bye)
 {bye_line}
-{injury_block}
+{notes_block}{injury_block}
 ### USER MESSAGE
 {user_input}
 """
@@ -370,6 +410,10 @@ if "tracker" not in st.session_state:
     st.session_state.turns_since_reset = 0
     st.session_state.board_key_counter = 0  # bumped after each draft click to reset table selection
     st.session_state.injury_check_enabled = False  # toggle: search for latest injury/news on recommended players
+    st.session_state.live_notes = load_live_notes()  # freeform notes injected into every turn's prompt
+    st.session_state.auto_insight_enabled = True  # toggle: automatic board-scan check-ins as picks happen
+    st.session_state.auto_insight_interval = DEFAULT_AUTO_INSIGHT_INTERVAL  # every N live picks
+    st.session_state.last_auto_insight_pick_count = 0  # live-pick count at the last auto check-in fired
 
     try:
         init_response = call_with_retry(
@@ -377,6 +421,7 @@ if "tracker" not in st.session_state:
             build_turn_message_ui(
                 st.session_state.tracker,
                 "Confirm that you have loaded my rankings. List my top 3 overall players.",
+                live_notes=st.session_state.live_notes,
             ),
             on_retry=lambda attempt, total, delay: st.toast(
                 f"Gemini is overloaded (attempt {attempt}/{total}) — retrying in {delay}s...", icon="⏳"
@@ -399,7 +444,7 @@ st.title("🏈 Fantasy Draft Assistant")
 
 # --- Top container: header row, then Available Players, then Best Value/Best Available, then trends ---
 with st.container(border=True):
-    keeper_col, drafted_col, undo_col, pick_status_col = st.columns([2, 1, 1, 1.3])
+    keeper_col, drafted_col, writein_col, undo_col, pick_status_col = st.columns([1.6, 1, 1, 1, 1.3])
 
     keeper_entries = [d for d in tracker.drafted.values() if d.get("is_keeper")]
     with keeper_col:
@@ -417,10 +462,16 @@ with st.container(border=True):
             if not tracker.drafted:
                 st.caption("No picks logged yet.")
             else:
+                def _log_pick_label(d):
+                    if d.get("is_keeper"):
+                        return f"Keeper (Rd {d['keeper_round']})" if d.get("keeper_round") else "Keeper"
+                    if d.get("is_manual"):
+                        return f"{d['pick_no']} ✍️"
+                    return d["pick_no"]
+
                 log_rows = [
                     {
-                        "Pick": (f"Keeper (Rd {d['keeper_round']})" if d.get("keeper_round") else "Keeper")
-                                if d.get("is_keeper") else d["pick_no"],
+                        "Pick": _log_pick_label(d),
                         "Player": d["player"],
                         "Team": d.get("team", "Opponent"),
                         "🗑️ Remove": False,
@@ -456,6 +507,33 @@ with st.container(border=True):
                         st.rerun()
                     else:
                         st.caption("No changes to apply.")
+
+    with writein_col:
+        with st.popover("✍️ Write-in Pick", width="stretch"):
+            st.caption(
+                "Log a pick for a player NOT in your rankings CSV — e.g. someone reached for. "
+                "Keeps Round/Pick numbering in sync with the real draft."
+            )
+            wi_key = st.session_state.board_key_counter
+            wi_name = st.text_input("Player name", key=f"wi_name_{wi_key}")
+            wi_position = st.selectbox(
+                "Position", ["QB", "RB", "WR", "TE", "K", "DST", "Unknown"], key=f"wi_position_{wi_key}"
+            )
+            wi_nfl_team = st.text_input("NFL team (optional)", key=f"wi_nfl_team_{wi_key}")
+            wi_team_options = sorted(
+                {tracker.my_team_name, "Opponent"} | {d.get("team", "Opponent") for d in tracker.drafted.values()}
+            )
+            wi_team = st.selectbox("Drafted by", wi_team_options, key=f"wi_team_{wi_key}")
+            if st.button("Log Pick", key=f"wi_submit_{wi_key}", width="stretch"):
+                if not wi_name.strip():
+                    st.warning("Enter a player name first.")
+                else:
+                    msg = tracker.draft_player_manual(
+                        wi_name, position=wi_position, team=wi_team, nfl_team=wi_nfl_team.strip() or None
+                    )
+                    st.toast(msg, icon="✍️")
+                    st.session_state.board_key_counter += 1
+                    st.rerun()
 
     with undo_col:
         if st.button("↩️ Undo Last Pick"):
@@ -597,17 +675,55 @@ with col_chat:
     # --- Quick prompts + injury/news toggle: compact, bordered, sits above the
     # input so it's always visible without disturbing any other component's layout. ---
     with st.container(border=True):
-        st.session_state.injury_check_enabled = st.toggle(
-            "🩹 Injury/News Check",
-            value=st.session_state.injury_check_enabled,
-            help=(
-                "When on, the assistant searches for each recommended player's latest "
-                "injury status and notable news before responding. Minor stuff "
-                "(tightness, questionable, rest day) is noted but won't count against "
-                "a recommendation; major stuff (tear, surgery, IR) is flagged clearly. "
-                "Adds a bit of latency per message since it triggers a live search."
-            ),
-        )
+        toggle_col, auto_col1, auto_col2 = st.columns([1.3, 1, 1])
+        with toggle_col:
+            st.session_state.injury_check_enabled = st.toggle(
+                "🩹 Injury/News Check",
+                value=st.session_state.injury_check_enabled,
+                help=(
+                    "When on, the assistant searches for each recommended player's latest "
+                    "injury status and notable news before responding. Minor stuff "
+                    "(tightness, questionable, rest day) is noted but won't count against "
+                    "a recommendation; major stuff (tear, surgery, IR) is flagged clearly. "
+                    "Adds a bit of latency per message since it triggers a live search."
+                ),
+            )
+        with auto_col1:
+            st.session_state.auto_insight_enabled = st.toggle(
+                "🔍 Auto Insights",
+                value=st.session_state.auto_insight_enabled,
+                help="Automatically ask the assistant for a board scan every N live picks. Turn off to disable entirely.",
+            )
+        with auto_col2:
+            st.session_state.auto_insight_interval = st.number_input(
+                "Every N picks",
+                min_value=1,
+                max_value=15,
+                value=st.session_state.auto_insight_interval,
+                step=1,
+                disabled=not st.session_state.auto_insight_enabled,
+                help="How many live picks pass between automatic check-ins.",
+            )
+
+        with st.expander("📝 Live Notes (considered on every message)"):
+            def _save_live_notes():
+                st.session_state.live_notes = st.session_state.live_notes_input
+                save_live_notes(st.session_state.live_notes)
+
+            st.text_area(
+                "Live notes",
+                value=st.session_state.live_notes,
+                key="live_notes_input",
+                height=90,
+                on_change=_save_live_notes,
+                label_visibility="collapsed",
+                placeholder=(
+                    "e.g. 'Team 4 said they're punting RB', 'targeting a QB rounds 4-6', "
+                    "'don't suggest anyone on a bye week 9 rest day'..."
+                ),
+            )
+            st.caption("Saved automatically and included in every message — no chat reset needed.")
+
         st.caption("Quick Prompts")
         qp_cols = st.columns(len(QUICK_PROMPTS))
         quick_prompt_text = None
@@ -622,8 +738,26 @@ with col_chat:
         file_type=["png", "jpg", "jpeg", "pdf", "txt", "csv", "md", "xlsx", "docx"],
     )
 
+    # --- Auto-insight check: fires automatically once enough live picks have passed
+    # since the last check-in. Runs every rerun, but only actually triggers when the
+    # live pick count crosses the threshold — since the board/picks section above always
+    # executes before this point in the script, a pick made via the board or write-in
+    # popover is already reflected in tracker.draft_progress() by the time this check runs.
+    # last_auto_insight_pick_count is bumped immediately so an unrelated rerun (typing in
+    # the chat box, sorting a table, etc.) can't re-trigger it. ---
+    auto_prompt_text, auto_pick_no = None, None
+    if st.session_state.auto_insight_enabled:
+        progress = tracker.draft_progress()
+        live_made = progress.get("live_picks_made", tracker.pick_counter) if progress else tracker.pick_counter
+        if live_made > 0 and (live_made - st.session_state.last_auto_insight_pick_count) >= st.session_state.auto_insight_interval:
+            auto_pick_no = live_made
+            auto_prompt_text = AUTO_INSIGHT_PROMPT_TEMPLATE.format(pick_no=live_made)
+            st.session_state.last_auto_insight_pick_count = live_made
+
     user_input, uploaded_files, process_turn = None, [], False
-    if quick_prompt_text:
+    if auto_prompt_text:
+        user_input, uploaded_files, process_turn = auto_prompt_text, [], True
+    elif quick_prompt_text:
         user_input, uploaded_files, process_turn = quick_prompt_text, [], True
     elif chat_submission:
         user_input = chat_submission.text or ""
@@ -635,7 +769,10 @@ with col_chat:
         image_files = [f for f in uploaded_files if f.name.rsplit(".", 1)[-1].lower() in IMAGE_EXTENSIONS]
         attachment_names = [f.name for f in uploaded_files]
 
-        display_text = user_input if user_input else "(attachment only)"
+        if auto_prompt_text:
+            display_text = f"🔍 **Auto Insight** — check-in after live pick #{auto_pick_no}"
+        else:
+            display_text = user_input if user_input else "(attachment only)"
         st.session_state.messages.append(
             {"role": "user", "content": display_text, "attachments": attachment_names}
         )
@@ -682,6 +819,7 @@ with col_chat:
                 tracker,
                 user_input,
                 injury_check=st.session_state.injury_check_enabled,
+                live_notes=st.session_state.live_notes,
             )
         ]
         message_parts.extend(build_image_part(f) for f in image_files)
